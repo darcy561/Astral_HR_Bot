@@ -30,6 +30,20 @@ func BuildGuildChannels(s *discordgo.Session) error {
 	}
 
 	for _, channel := range channels {
+
+		if channel.Type == discordgo.ChannelTypeGuildText && channel.ParentID != "" {
+			parentChannel, err := s.Channel(channel.ParentID)
+
+			if err != nil {
+				log.Printf("Error fetching parent channel: %v", err)
+				continue
+			}
+
+			if parentChannel.Type == discordgo.ChannelTypeGuildVoice {
+				continue
+			}
+		}
+
 		processedChannelName := emojiRegex.ReplaceAllString(channel.Name, "")
 		processedChannelName = strings.ToLower(processedChannelName)
 		processedChannelName = strings.ReplaceAll(processedChannelName, "-", "_")

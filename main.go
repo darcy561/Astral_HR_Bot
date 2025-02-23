@@ -7,13 +7,8 @@ import (
 )
 
 func main() {
-
 	db.InitRedis()
-
 	bot.Setup()
-
 	discordAPIWorker.NewWorker(bot.Discord)
-
 	bot.Start()
-
 }

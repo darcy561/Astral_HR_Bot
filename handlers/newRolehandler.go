@@ -168,9 +168,9 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 			m.Member.DisplayName(), m.User.ID,
 		)
 
-		channelID := channels.GetChannelID("general")
+		// channelID := channels.GetChannelID("general")
 		discordAPIWorker.NewRequest(func() error {
-			_, err := s.ChannelMessageSend(channelID, message)
+			_, err := s.ChannelMessageSend("913244392876285953", message)
 			return err
 		})
 
@@ -193,6 +193,12 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 		}
 
 		if found {
+
+			discordAPIWorker.NewRequest(func() error {
+				_, err := s.ChannelMessageSend(recruitmentThread.ID, "Member Joined Corp")
+				return err
+			})
+
 			isArchived := true
 			discordAPIWorker.NewRequest(func() error {
 				_, err := s.ChannelEditComplex(recruitmentThread.ID, &discordgo.ChannelEdit{

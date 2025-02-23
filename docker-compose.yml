@@ -1,8 +1,8 @@
 services:
   bot:
     build: .
-    image: darcy561/astral_hr_bot
-    container_name: astral_hr_bot
+    image: darcy561/astral-hr-bot
+    container_name: astral-hr-bot
     depends_on:
       - redis
     environment:
