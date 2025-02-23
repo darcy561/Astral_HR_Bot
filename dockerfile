@@ -1,5 +1,5 @@
     # Use the official Go image to build the bot
-    FROM golang:1.23 AS builder
+    FROM golang:1.24 AS builder
 
     # Set the working directory
     WORKDIR /app
