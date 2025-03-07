@@ -25,8 +25,8 @@ func HandleRoleGained(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []
 }
 
 func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string) bool {
-	if hasRole(a, roles.GetRoleID("newbro")) && !hasRole(m.Roles, roles.GetRoleID("server_clown")) {
-		channelID := channels.GetChannelID("recruitment")
+	if hasRole(a, roles.GetRoleID("newbro-7102")) && !hasRole(m.Roles, roles.GetRoleID("server_clown-3309")) {
+		channelID := channels.GetChannelID("recruitment-8356")
 		message := fmt.Sprintf(
 			"Welcome <@%s>! \n\n"+
 				"A member of the recruitment team will be with you shortly. In the meantime, please follow these steps:\n\n"+
@@ -44,14 +44,14 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 			return err
 		})
 
-		if hasRole(m.Roles, roles.GetRoleID("newcomer")) {
+		if hasRole(m.Roles, roles.GetRoleID("newcomer-9439")) {
 			discordAPIWorker.NewRequest(func() error {
-				err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetRoleID("newcomer"))
+				err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetRoleID("newcomer-9439"))
 				return err
 			})
 		}
 
-		recruitmentChannelID := channels.GetChannelID("recruitment_forum")
+		recruitmentChannelID := channels.GetChannelID("recruitment_forum-1311")
 		recruitmentThread, found := helper.FindForumThreadByTitle(s, recruitmentChannelID, m.User.ID)
 
 		if !found {
@@ -94,17 +94,17 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 
 func recruitAuthenticated(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string) bool {
 
-	if hasRole(m.Roles, roles.GetRoleID("newbro")) && hasRole(a, roles.GetRoleID("authenticated_guest")) {
+	if hasRole(m.Roles, roles.GetRoleID("newbro-7102")) && hasRole(a, roles.GetRoleID("authenticated_guest-1333")) {
 
 		discordAPIWorker.NewRequest(func() error {
-			_, err := s.ChannelMessageSend(channels.GetChannelID("recruitment_hub"), fmt.Sprintf("%s has completed the authentication steps.", m.Member.DisplayName()))
+			_, err := s.ChannelMessageSend(channels.GetChannelID("recruitment_hub-3185"), fmt.Sprintf("%s has completed the authentication steps.", m.Member.DisplayName()))
 			if err != nil {
 				return err
 			}
 			return nil
 		})
 
-		recruitmentChannelID := channels.GetChannelID("recruitment_forum")
+		recruitmentChannelID := channels.GetChannelID("recruitment_forum-1311")
 		recruitmentThread, found := helper.FindForumThreadByTitle(s, recruitmentChannelID, m.User.ID)
 		if found {
 			updatedThreadTitle := fmt.Sprintf("%s - %s", m.Member.DisplayName(), m.User.ID)
@@ -138,10 +138,10 @@ func recruitAuthenticated(s *discordgo.Session, m *discordgo.GuildMemberUpdate, 
 
 func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string) bool {
 
-	if (hasRole(m.Roles, roles.GetRoleID("newbro")) || hasRole(m.Roles, roles.GetRoleID("authenticated_guest"))) && hasRole(a, roles.GetRoleID("authenticated_member")) {
+	if (hasRole(m.Roles, roles.GetRoleID("newbro-7102")) || hasRole(m.Roles, roles.GetRoleID("authenticated_guest-1333"))) && hasRole(a, roles.GetRoleID("authenticated_member-6454")) {
 
 		rolesToRemove := []string{
-			"newcomer", "newbro", "guest", "legacy_guest",
+			"newcomer-9439", "newbro-7102", "guest-4128", "legacy_guest-9234",
 		}
 
 		for _, role := range rolesToRemove {
@@ -168,13 +168,13 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 			m.Member.DisplayName(), m.User.ID,
 		)
 
-		// channelID := channels.GetChannelID("general")
+		channelID := channels.GetChannelID("general-5953")
 		discordAPIWorker.NewRequest(func() error {
-			_, err := s.ChannelMessageSend("913244392876285953", message)
+			_, err := s.ChannelMessageSend(channelID, message)
 			return err
 		})
 
-		recruitmentChannelID := channels.GetChannelID("recruitment_forum")
+		recruitmentChannelID := channels.GetChannelID("recruitment_forum-1311")
 		recruitmentChannel, err := s.Channel(recruitmentChannelID)
 		if err != nil {
 			log.Printf("Failed to fetch recruitment channel: %v", err)
@@ -195,7 +195,7 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 		if found {
 
 			discordAPIWorker.NewRequest(func() error {
-				_, err := s.ChannelMessageSend(recruitmentThread.ID, "Member Joined Corp")
+				_, err := s.ChannelMessageSend(recruitmentThread.ID, "Character Joined Corp")
 				return err
 			})
 

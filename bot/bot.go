@@ -29,8 +29,9 @@ func Setup() {
 	Discord.Identify.Intents = discordgo.IntentsAll
 
 	Discord.AddHandler(handlers.MessageHandlers)
-	Discord.AddHandler(handlers.MemberJoiningServerHandlers)
+	Discord.AddHandler(handlers.MemberLeaversAndJoiners)
 	Discord.AddHandler(handlers.GuildMemberUpdateHandlers)
+	Discord.AddHandler(handlers.ManageGuildChanges)
 
 }
 

@@ -10,7 +10,13 @@ import (
 
 var RoleMap = make(map[string]string)
 var ContentNotificationRoles = []string{
-	"mining", "industry", "pve", "pvp", "fw",
+	"mining-4737", "industry-8140", "pve-7472", "pvp-9618", "fw-8226",
+}
+
+func generateRoleKey(name, id string) string {
+	processedName := strings.ToLower(name)
+	processedName = strings.ReplaceAll(processedName, " ", "_")
+	return processedName + "-" + id[len(id)-4:]
 }
 
 func BuildGuildRoles(s *discordgo.Session) error {
@@ -32,10 +38,7 @@ func BuildGuildRoles(s *discordgo.Session) error {
 	}
 
 	for _, role := range roles {
-		processedRoleName := strings.ToLower(role.Name)
-		processedRoleName = strings.ReplaceAll(processedRoleName, " ", "_")
-
-		RoleMap[processedRoleName] = role.ID
+		AddRoleToMap(role)
 	}
 
 	log.Println("Roles fetched and mapped successfully.")
@@ -46,4 +49,24 @@ func BuildGuildRoles(s *discordgo.Session) error {
 // Enter role by name, all lowercase, use _ instead of spaces
 func GetRoleID(roleName string) string {
 	return RoleMap[roleName]
+}
+
+func RemoveRoleFromMap(roleID string) {
+	for id := range RoleMap {
+		if strings.Contains(id, "-"+roleID[len(roleID)-4:]) {
+			delete(RoleMap, id)
+			break
+		}
+	}
+
+}
+
+func AddRoleToMap(role *discordgo.Role) {
+	key := generateRoleKey(role.Name, role.ID)
+	RoleMap[key] = role.ID
+}
+
+func UpdateRole(role *discordgo.Role) {
+	RemoveRoleFromMap(role.ID)
+	AddRoleToMap(role)
 }

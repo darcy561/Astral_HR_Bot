@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"astralHRBot/workers/eventWorker"
 	"fmt"
 	"slices"
 
@@ -9,13 +10,20 @@ import (
 
 var guildMemberUpdateMiddleware = []GuildMemberUpdateMiddleware{}
 
-func GuildMemberUpdateHandlers(discord *discordgo.Session, member *discordgo.GuildMemberUpdate) {
+func GuildMemberUpdateHandlers(s *discordgo.Session, m *discordgo.GuildMemberUpdate) {
 	for _, middleware := range guildMemberUpdateMiddleware {
-		if middleware(discord, member) {
+		if !middleware(s, m) {
 			return
 		}
 	}
-	handleRoleChanges(discord, member)
+
+	eventWorker.AddEvent(eventWorker.Event{
+		UserID:  m.User.ID,
+		Payload: m,
+		Handler: func(payload interface{}) {
+			handleRoleChanges(s, m)
+		},
+	})
 }
 
 func handleRoleChanges(s *discordgo.Session, m *discordgo.GuildMemberUpdate) {
@@ -48,7 +56,6 @@ func handleRoleChanges(s *discordgo.Session, m *discordgo.GuildMemberUpdate) {
 
 	if len(addedRoles) > 0 {
 		HandleRoleGained(s, m, addedRoles)
-
 	}
 
 	if len(removedRoles) > 0 {

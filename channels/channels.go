@@ -30,32 +30,35 @@ func BuildGuildChannels(s *discordgo.Session) error {
 	}
 
 	for _, channel := range channels {
-
-		if channel.Type == discordgo.ChannelTypeGuildText && channel.ParentID != "" {
-			parentChannel, err := s.Channel(channel.ParentID)
-
-			if err != nil {
-				log.Printf("Error fetching parent channel: %v", err)
-				continue
-			}
-
-			if parentChannel.Type == discordgo.ChannelTypeGuildVoice {
-				continue
-			}
-		}
-
-		processedChannelName := emojiRegex.ReplaceAllString(channel.Name, "")
-		processedChannelName = strings.ToLower(processedChannelName)
-		processedChannelName = strings.ReplaceAll(processedChannelName, "-", "_")
-
-		ChannelMap[processedChannelName] = channel.ID
+		AddChannelToMap(channel)
 	}
 
 	log.Println("Channels fetched and mapped successfully.")
 	return nil
 }
 
-// Enter channel by name, all lowercase, use_instead of spaces
+// Enter channel by name, lowercase and spaces as _, followed by a - and then the last 4 digits of channel ID (e.g., general_1a2b)
 func GetChannelID(channelName string) string {
 	return ChannelMap[channelName]
+}
+
+func generateChannelKey(name, id string) string {
+	processedName := emojiRegex.ReplaceAllString(name, "")
+	processedName = strings.ToLower(processedName)
+	processedName = strings.ReplaceAll(processedName, "-", "_")
+	return processedName + "_" + id[len(id)-4:]
+}
+
+func AddChannelToMap(channel *discordgo.Channel) {
+	key := generateChannelKey(channel.Name, channel.ID)
+	ChannelMap[key] = channel.ID
+}
+func RemoveChannelFromMap(channel *discordgo.Channel) {
+	key := generateChannelKey(channel.Name, channel.ID)
+	delete(ChannelMap, key)
+}
+
+func UpdateChannel(channel *discordgo.Channel) {
+	RemoveChannelFromMap(channel)
+	AddChannelToMap(channel)
 }

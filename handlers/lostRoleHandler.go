@@ -8,7 +8,7 @@ import (
 )
 
 func HandleRoleLost(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string) {
-	if memberLeavesCorporaiton(s, m, r) {
+	if memberLeavesCorporation(s, m, r) {
 		return
 	}
 	if memberLosesBlueRole(s, m, r) {
@@ -17,8 +17,8 @@ func HandleRoleLost(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []st
 
 }
 
-func memberLeavesCorporaiton(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string) bool {
-	if hasRole(r, roles.GetRoleID("member")) {
+func memberLeavesCorporation(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string) bool {
+	if hasRole(r, roles.GetRoleID("member-1054")) {
 
 		for _, role := range roles.ContentNotificationRoles {
 			discordAPIWorker.NewRequest(func() error {
@@ -43,7 +43,7 @@ func memberLeavesCorporaiton(s *discordgo.Session, m *discordgo.GuildMemberUpdat
 }
 
 func memberLosesBlueRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string) bool {
-	if hasRole(r, roles.GetRoleID("blue")) {
+	if hasRole(r, roles.GetRoleID("blue-2602")) {
 		discordAPIWorker.NewRequest(func() error {
 			err := s.GuildMemberRoleAdd(m.GuildID, m.User.ID, roles.GetRoleID("guest"))
 			return err
