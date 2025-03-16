@@ -1,8 +1,8 @@
 package handlers
 
 import (
+	"astralHRBot/logger"
 	"astralHRBot/workers/eventWorker"
-	"fmt"
 	"slices"
 
 	"github.com/bwmarrin/discordgo"
@@ -11,33 +11,46 @@ import (
 var guildMemberUpdateMiddleware = []GuildMemberUpdateMiddleware{}
 
 func GuildMemberUpdateHandlers(s *discordgo.Session, m *discordgo.GuildMemberUpdate) {
+	eventWorker.AddEvent(
+		m.User.ID,
+		handleRoleChanges,
+		s, m,
+	)
+}
+
+func handleRoleChanges(e eventWorker.Event) {
+	p, t := e.Payload, e.TraceID
+
+	if len(p) < 2 {
+		logger.Error(t, "handle role changes: invalid arguments")
+		return
+	}
+
+	s, ok1 := p[0].(*discordgo.Session)
+	m, ok2 := p[1].(*discordgo.GuildMemberUpdate)
+
+	if !ok1 || !ok2 {
+		logger.Error(t, "handle role changes: type assertion failed")
+		return
+	}
+
 	for _, middleware := range guildMemberUpdateMiddleware {
-		if !middleware(s, m) {
+		if !middleware(s, m, e) {
 			return
 		}
 	}
 
-	eventWorker.AddEvent(eventWorker.Event{
-		UserID:  m.User.ID,
-		Payload: m,
-		Handler: func(payload interface{}) {
-			handleRoleChanges(s, m)
-		},
-	})
-}
+	oldRoles, newRoles := []string{}, []string{}
 
-func handleRoleChanges(s *discordgo.Session, m *discordgo.GuildMemberUpdate) {
-	oldRoles := []string{}
-	newRoles := []string{}
 	if m.BeforeUpdate != nil && m.BeforeUpdate.Roles != nil {
 		oldRoles = m.BeforeUpdate.Roles
 	} else {
-		fmt.Println("No old roles to compare, assuming none existed.")
+		logger.Warn(t, "No old roles to compare, assuming none existed.")
 	}
 	if m.Roles != nil {
 		newRoles = m.Roles
 	} else {
-		fmt.Println("No new roles to compare, assuming none existed.")
+		logger.Warn(t, "No old roles to compare, assuming none existed.")
 	}
 
 	addedRoles := []string{}
@@ -55,13 +68,13 @@ func handleRoleChanges(s *discordgo.Session, m *discordgo.GuildMemberUpdate) {
 	}
 
 	if len(addedRoles) > 0 {
-		HandleRoleGained(s, m, addedRoles)
+		HandleRoleGained(s, m, addedRoles, e)
 	}
 
 	if len(removedRoles) > 0 {
-		HandleRoleLost(s, m, removedRoles)
+		HandleRoleLost(s, m, removedRoles, e)
 	}
-
+	logger.Debug(t, "handle role change complete.")
 }
 
 func hasRole(roles []string, roleID string) bool {

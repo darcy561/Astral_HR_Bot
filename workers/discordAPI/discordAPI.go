@@ -1,6 +1,8 @@
 package discordAPIWorker
 
 import (
+	"astralHRBot/logger"
+	"astralHRBot/workers/eventWorker"
 	"log"
 	"sync"
 	"time"
@@ -13,6 +15,7 @@ var once sync.Once
 var workerReady sync.WaitGroup
 
 type apiRequest struct {
+	Event   eventWorker.Event
 	Execute func() error
 }
 
@@ -45,7 +48,7 @@ func (w *DiscordAPISubmissionWorker) run() {
 		select {
 		case request := <-w.requestQueue:
 			if err := request.Execute(); err != nil {
-				log.Println("Error executing API request:", err)
+				logger.Error(request.Event.TraceID, err.Error())
 			}
 			time.Sleep(1 * time.Second)
 
@@ -55,12 +58,14 @@ func (w *DiscordAPISubmissionWorker) run() {
 	}
 }
 
-func NewRequest(f func() error) {
+func NewRequest(e eventWorker.Event, f func() error) {
 	if discordAPIWorker == nil {
 		log.Println("Worker not initialized yet!")
 		return
 	}
+
 	discordAPIWorker.requestQueue <- apiRequest{
+		Event:   e,
 		Execute: f,
 	}
 }

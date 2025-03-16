@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"astralHRBot/handlers/middleware"
+	"astralHRBot/logger"
+	"astralHRBot/workers/eventWorker"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -13,27 +15,56 @@ var guildMemberRemoveMiddleware = []GuildMemberRemoveMiddleware{
 	middleware.SendMessageOnMemberLeave,
 }
 
-func MemberLeaversAndJoiners(s *discordgo.Session, event any) {
-	switch e := event.(type) {
+func MemberLeaversAndJoiners(s *discordgo.Session, d any) {
+	switch t := d.(type) {
 	case *discordgo.GuildMemberAdd:
-		memberJoiningServerHandlers(s, e)
+		eventWorker.AddEvent(t.User.ID, memberJoiningServerHandlers, s, t)
 	case *discordgo.GuildMemberRemove:
-		memberLeavingSererHandlers(s, e)
+		eventWorker.AddEvent(t.User.ID, memberLeavingSererHandlers, s, t)
 	}
 }
 
-func memberJoiningServerHandlers(d *discordgo.Session, m *discordgo.GuildMemberAdd) {
+func memberJoiningServerHandlers(e eventWorker.Event) {
+	p, t := e.Payload, e.TraceID
+
+	if len(p) < 2 {
+		logger.Error(t, "handle role changes: invalid arguments")
+		return
+	}
+
+	s, ok1 := p[0].(*discordgo.Session)
+	m, ok2 := p[1].(*discordgo.GuildMemberAdd)
+
+	if !ok1 || !ok2 {
+		logger.Error(t, "handle role changes: type assertion failed")
+		return
+	}
+
 	for _, middleware := range guildMemberAddMiddleware {
-		if !middleware(d, m) {
+		if !middleware(s, m, e) {
 			return
 		}
 	}
 
 }
 
-func memberLeavingSererHandlers(s *discordgo.Session, m *discordgo.GuildMemberRemove) {
+func memberLeavingSererHandlers(e eventWorker.Event) {
+	p, t := e.Payload, e.TraceID
+
+	if len(p) < 2 {
+		logger.Error(t, "handle role changes: invalid arguments")
+		return
+	}
+
+	s, ok1 := p[0].(*discordgo.Session)
+	m, ok2 := p[1].(*discordgo.GuildMemberRemove)
+
+	if !ok1 || !ok2 {
+		logger.Error(t, "handle role changes: type assertion failed")
+		return
+	}
 	for _, middleware := range guildMemberRemoveMiddleware {
-		if !middleware(s, m) {
+		if !middleware(s, m, e) {
 			return
 		}
 	}

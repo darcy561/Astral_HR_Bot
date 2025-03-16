@@ -3,12 +3,15 @@ package eventWorker
 import (
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Event struct {
 	UserID  string
-	Payload interface{}
-	Handler func(interface{})
+	Handler func(Event)
+	TraceID string
+	Payload []any
 }
 
 type UserQueue struct {
@@ -46,7 +49,14 @@ func (uq *UserQueue) startWorker(userID string) {
 	}()
 }
 
-func AddEvent(event Event) {
+func AddEvent(userID string, handler func(Event), payload ...any) {
+	event := Event{
+		UserID:  userID,
+		Handler: handler,
+		TraceID: uuid.New().String(),
+		Payload: payload,
+	}
+
 	EventWorker.mu.Lock()
 
 	if _, exists := EventWorker.userQueues[event.UserID]; !exists {
@@ -63,7 +73,7 @@ func AddEvent(event Event) {
 func (uq *UserQueue) processUserQueue(userID string) {
 	queue := uq.userQueues[userID]
 	for event := range queue {
-		event.Handler(event.Payload)
+		event.Handler(event)
 	}
 
 	uq.mu.Lock()
