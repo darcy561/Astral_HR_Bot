@@ -6,8 +6,12 @@ import (
 
 type User struct {
 	DiscordID             int
+	CurrentDisplayName    string
+	CurrentJoinDate       time.Time
 	PreviousJoinDate      time.Time
 	PreviousLeaveDate     time.Time
-	CurrentJoinDate       time.Time
 	DateJoinedRecruitment time.Time
+	LastMessageDate       time.Time
+	LastMessageID         string
+	Monitored             bool
 }

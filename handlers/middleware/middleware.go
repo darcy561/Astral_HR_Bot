@@ -3,6 +3,7 @@ package middleware
 import (
 	"astralHRBot/channels"
 	"astralHRBot/logger"
+	"astralHRBot/users"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
 	"fmt"
@@ -47,6 +48,22 @@ func SendMessageOnMemberLeave(s *discordgo.Session, m *discordgo.GuildMemberRemo
 		"trace_id":   e.TraceID,
 		"action":     "middleware_pass",
 		"middleware": "send_message_on_member_leave",
+		"member_id":  m.User.ID,
+		"message":    "Passed",
+	})
+
+	return true
+}
+
+// CreateOrUpdateUserMiddleware sends an event to handle user creation/updates in Redis when a member joins
+func CreateOrUpdateUserMiddleware(s *discordgo.Session, m *discordgo.GuildMemberAdd, e eventWorker.Event) bool {
+	// Send the user creation event to the event worker
+	eventWorker.AddEvent(m.User.ID, users.CreateOrUpdateUser, m.User)
+
+	logger.Debug(logger.LogData{
+		"trace_id":   e.TraceID,
+		"action":     "middleware_pass",
+		"middleware": "create_or_update_user",
 		"member_id":  m.User.ID,
 		"message":    "Passed",
 	})

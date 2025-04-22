@@ -62,7 +62,7 @@ func GetRedisClient() *redis.Client {
 
 func GetUserFromRedis(ctx context.Context, userID int) (*models.User, error) {
 
-	key := "user:" + strconv.Itoa(userID)
+	key := "User:" + strconv.Itoa(userID)
 
 	data, err := RedisDB.HGetAll(ctx, key).Result()
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 )
 
 var guildMemberAddMiddleware = []GuildMemberAddMiddleware{
+	middleware.CreateOrUpdateUserMiddleware,
 	middleware.SendMessageOnMemberJoin,
 }
 var guildMemberRemoveMiddleware = []GuildMemberRemoveMiddleware{

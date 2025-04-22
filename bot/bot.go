@@ -10,7 +10,9 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var Discord *discordgo.Session
+var (
+	Discord *discordgo.Session
+)
 
 func Setup() {
 	botToken, exists := os.LookupEnv("BOT_TOKEN")
@@ -33,17 +35,16 @@ func Setup() {
 		os.Exit(1)
 	}
 
-	Discord.Identify.Intents = discordgo.IntentsAll
-
+	// Add all handlers before opening the connection
 	Discord.AddHandler(handlers.MessageHandlers)
 	Discord.AddHandler(handlers.MemberLeaversAndJoiners)
 	Discord.AddHandler(handlers.GuildMemberUpdateHandlers)
 	Discord.AddHandler(handlers.ManageGuildChanges)
 
+	Discord.Identify.Intents = discordgo.IntentsAll
 }
 
 func Start() {
-
 	logger.Info(logger.LogData{
 		"action":  "server_startup",
 		"message": "Attempting to open connection to Discord...",
@@ -70,9 +71,7 @@ func Start() {
 	})
 
 	sigChan := make(chan os.Signal, 1)
-
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
 	<-sigChan
 
 	defer func() {
@@ -88,5 +87,4 @@ func Start() {
 			})
 		}
 	}()
-
 }

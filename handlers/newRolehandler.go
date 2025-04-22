@@ -5,6 +5,7 @@ import (
 	"astralHRBot/helper"
 	"astralHRBot/logger"
 	"astralHRBot/roles"
+	"astralHRBot/users"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
 	"fmt"
@@ -124,6 +125,19 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 				return nil
 			})
 		}
+
+		// Update recruitment date in Redis
+		err := users.UpdateRecruitmentDate(m.User.ID)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"trace_id":  e.TraceID,
+				"action":    "recruitment_date_update",
+				"message":   "Failed to update recruitment date",
+				"error":     err.Error(),
+				"member_id": m.User.ID,
+			})
+		}
+
 		logger.Debug(logger.LogData{
 			"trace_id":  e.TraceID,
 			"action":    "process_complete",
