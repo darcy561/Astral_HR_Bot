@@ -2,25 +2,33 @@ package logger
 
 import (
 	"astralHRBot/settings"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 )
 
 type logLevel string
 
 const (
-	info   logLevel = "INFO"
-	warn   logLevel = "WARN"
-	error  logLevel = "ERROR"
-	debug  logLevel = "DEBUG"
-	system logLevel = "SYSTEM"
+	info        logLevel = "INFO"
+	warn        logLevel = "WARN"
+	error       logLevel = "ERROR"
+	debug       logLevel = "DEBUG"
+	system      logLevel = "SYSTEM"
+	systemDebug logLevel = "SYSTEM_DEBUG"
 )
+
+type LogData map[string]any
 
 type logMessage struct {
 	Level   logLevel
-	Message string
+	Data    LogData
 	Time    time.Time
 	TraceID string
+	Package string
 }
 
 var logChannel = make(chan logMessage, 200)
@@ -31,41 +39,85 @@ func StartLogger() {
 
 func logWorker() {
 	for logMsg := range logChannel {
-		output := fmt.Sprintf("[%s] [%s] [TraceID: %s]: %s\n",
+		jsonData, err := json.Marshal(logMsg.Data)
+		if err != nil {
+			jsonData = []byte(fmt.Sprintf(`{"error": "Failed to marshal log data: %v"}`, err))
+		}
+
+		output := fmt.Sprintf("[%s] [%s] [Package: %s]: %s\n",
 			logMsg.Time.Format(time.RFC3339),
 			logMsg.Level,
-			logMsg.TraceID,
-			logMsg.Message,
+			logMsg.Package,
+			string(jsonData),
 		)
 		fmt.Println(output)
 	}
 }
 
-func newLog(level logLevel, traceID string, m string) {
-	if level == debug && !settings.DebugMode {
+func getCallerPackage() string {
+	pc, _, _, ok := runtime.Caller(3)
+	if !ok {
+		return "unknown"
+	}
+
+	fn := runtime.FuncForPC(pc)
+	if fn == nil {
+		return "unknown"
+	}
+
+	fullName := fn.Name()
+
+	parts := strings.Split(fullName, ".")
+	if len(parts) < 2 {
+		return "unknown"
+	}
+
+	pkgPath := strings.Join(parts[:len(parts)-1], ".")
+
+	pkgName := filepath.Base(pkgPath)
+
+	return pkgName
+}
+
+func newLog(level logLevel, data LogData) {
+	if (level == debug || level == systemDebug) && !settings.DebugMode {
 		return
+	}
+
+	traceID := "-"
+	if id, ok := data["trace_id"].(string); ok {
+		traceID = id
 	}
 
 	logChannel <- logMessage{
 		Level:   level,
-		Message: m,
+		Data:    data,
 		Time:    time.Now(),
 		TraceID: traceID,
+		Package: getCallerPackage(),
 	}
 }
 
-func Info(traceID string, m string) {
-	newLog(info, traceID, m)
+func Info(data LogData) {
+	newLog(info, data)
 }
-func Warn(traceID string, m string) {
-	newLog(warn, traceID, m)
+
+func Warn(data LogData) {
+	newLog(warn, data)
 }
-func Error(traceID string, m string) {
-	newLog(error, traceID, m)
+
+func Error(data LogData) {
+	newLog(error, data)
 }
-func Debug(traceID string, m string) {
-	newLog(debug, traceID, m)
+
+func Debug(data LogData) {
+	newLog(debug, data)
 }
-func System(m string) {
-	newLog(system, "-", m)
+
+func System(data LogData) {
+	newLog(system, data)
+}
+
+func SystemDebug(data LogData) {
+	newLog(systemDebug, data)
 }

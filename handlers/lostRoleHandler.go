@@ -16,34 +16,53 @@ func HandleRoleLost(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []st
 	if memberLosesBlueRole(s, m, r, e) {
 		return
 	}
-
 }
 
 func memberLeavesCorporation(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string, e eventWorker.Event) bool {
-	if hasRole(r, roles.GetRoleID("member-1054")) {
-
-		for _, role := range roles.ContentNotificationRoles {
+	if hasRole(r, roles.GetMemberRoleID()) {
+		for _, roleID := range roles.ContentNotificationRoles {
 			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(e.TraceID, "role removed: "+role)
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "role_removed",
+					"member_id": m.User.ID,
+					"role_id":   roleID,
+				})
 
-				err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetRoleID(role))
+				err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roleID)
 				return err
 			})
 		}
 
 		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(e.TraceID, "role removed: absentee")
-			err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetRoleID("absentee"))
+			logger.Debug(logger.LogData{
+				"trace_id":  e.TraceID,
+				"action":    "role_removed",
+				"member_id": m.User.ID,
+				"role":      "absentee",
+			})
+			err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetAbsenteeRoleID())
 			return err
 		})
 
 		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(e.TraceID, "role added: guest")
-			err := s.GuildMemberRoleAdd(m.GuildID, m.User.ID, roles.GetRoleID("guest"))
+			logger.Debug(logger.LogData{
+				"trace_id":  e.TraceID,
+				"action":    "role_added",
+				"member_id": m.User.ID,
+				"role":      "guest",
+			})
+			err := s.GuildMemberRoleAdd(m.GuildID, m.User.ID, roles.GetGuestRoleID())
 			return err
 		})
 
-		logger.Debug(e.TraceID, "Member Leaves Corporation Complete")
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "process_complete",
+			"process":   "member_leave_corporation",
+			"member_id": m.User.ID,
+			"message":   "Member Leaves Corporation Complete",
+		})
 
 		return true
 	}
@@ -51,14 +70,25 @@ func memberLeavesCorporation(s *discordgo.Session, m *discordgo.GuildMemberUpdat
 }
 
 func memberLosesBlueRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string, e eventWorker.Event) bool {
-	if hasRole(r, roles.GetRoleID("blue-2602")) {
+	if hasRole(r, roles.GetBlueRoleID()) {
 		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(e.TraceID, "role added: guest ")
-			err := s.GuildMemberRoleAdd(m.GuildID, m.User.ID, roles.GetRoleID("guest"))
+			logger.Debug(logger.LogData{
+				"trace_id":  e.TraceID,
+				"action":    "role_added",
+				"member_id": m.User.ID,
+				"role":      "guest",
+			})
+			err := s.GuildMemberRoleAdd(m.GuildID, m.User.ID, roles.GetGuestRoleID())
 			return err
 		})
 
-		logger.Debug(e.TraceID, "Member Loses Blue Role Complete")
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "process_complete",
+			"process":   "member_lose_blue",
+			"member_id": m.User.ID,
+			"message":   "Member Loses Blue Role Complete",
+		})
 
 		return true
 	}

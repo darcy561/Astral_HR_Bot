@@ -13,14 +13,17 @@ var messageCreateMiddleware = []MessageCreateMiddleware{
 }
 
 func MessageHandlers(s *discordgo.Session, m *discordgo.MessageCreate) {
-
 	eventWorker.AddEvent(
 		m.Author.ID,
 		func(e eventWorker.Event) {
 			p, t := e.Payload, e.TraceID
 
 			if len(p) < 2 {
-				logger.Error(t, "handle role changes: invalid arguments")
+				logger.Error(logger.LogData{
+					"trace_id": t,
+					"action":   "invalid_args",
+					"message":  "handle role changes: invalid arguments",
+				})
 				return
 			}
 
@@ -28,7 +31,11 @@ func MessageHandlers(s *discordgo.Session, m *discordgo.MessageCreate) {
 			m, ok2 := p[1].(*discordgo.MessageCreate)
 
 			if !ok1 || !ok2 {
-				logger.Error(t, "handle role changes: type assertion failed")
+				logger.Error(logger.LogData{
+					"trace_id": t,
+					"action":   "type_assertion_failed",
+					"message":  "handle role changes: type assertion failed",
+				})
 				return
 			}
 
@@ -37,9 +44,7 @@ func MessageHandlers(s *discordgo.Session, m *discordgo.MessageCreate) {
 					return
 				}
 			}
-
 		},
 		s, m,
 	)
-
 }

@@ -1,10 +1,8 @@
 package bot
 
 import (
-	"astralHRBot/channels"
 	"astralHRBot/handlers"
-	"astralHRBot/roles"
-	"log"
+	"astralHRBot/logger"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,13 +15,22 @@ var Discord *discordgo.Session
 func Setup() {
 	botToken, exists := os.LookupEnv("BOT_TOKEN")
 	if !exists {
-		log.Fatalf("Missing Discord Token")
+		logger.Error(logger.LogData{
+			"action":  "server_startup",
+			"message": "Missing Discord Token",
+		})
+		os.Exit(1)
 	}
 
 	var err error
 	Discord, err = discordgo.New("Bot " + botToken)
 	if err != nil {
-		log.Fatalf("Error creating Discord session: %v", err)
+		logger.Error(logger.LogData{
+			"action":  "server_startup",
+			"message": "Error creating Discord session",
+			"error":   err.Error(),
+		})
+		os.Exit(1)
 	}
 
 	Discord.Identify.Intents = discordgo.IntentsAll
@@ -37,18 +44,30 @@ func Setup() {
 
 func Start() {
 
-	log.Println("Attempting to open connection to Discord...")
+	logger.Info(logger.LogData{
+		"action":  "server_startup",
+		"message": "Attempting to open connection to Discord...",
+	})
 
 	err := Discord.Open()
 	if err != nil {
-		log.Fatalf("Error opening connection to Discord: %v", err)
+		logger.Error(logger.LogData{
+			"action":  "server_startup",
+			"message": "Error opening connection to Discord",
+			"error":   err.Error(),
+		})
+		os.Exit(1)
 	}
 
-	log.Println("Connection to Discord established successfully.")
-	roles.BuildGuildRoles(Discord)
-	channels.BuildGuildChannels(Discord)
+	logger.Info(logger.LogData{
+		"action":  "server_startup",
+		"message": "Connection to Discord established successfully.",
+	})
 
-	log.Println("Astral HR Bot is running...")
+	logger.Info(logger.LogData{
+		"action":  "server_startup",
+		"message": "Astral HR Bot is running...",
+	})
 
 	sigChan := make(chan os.Signal, 1)
 
@@ -57,9 +76,16 @@ func Start() {
 	<-sigChan
 
 	defer func() {
-		log.Println("Astral HR Bot is shutting down...")
+		logger.Info(logger.LogData{
+			"action":  "server_shutdown",
+			"message": "Astral HR Bot is shutting down...",
+		})
 		if err := Discord.Close(); err != nil {
-			log.Printf("Error closing Discord session: %v", err)
+			logger.Error(logger.LogData{
+				"action":  "server_shutdown",
+				"message": "Error closing Discord session",
+				"error":   err.Error(),
+			})
 		}
 	}()
 

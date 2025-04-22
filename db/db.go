@@ -1,10 +1,10 @@
 package db
 
 import (
+	"astralHRBot/logger"
 	"astralHRBot/models"
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"reflect"
 	"strconv"
@@ -20,7 +20,11 @@ func InitRedis() {
 	redisHost, exists := os.LookupEnv("REDIS_HOST")
 
 	if !exists {
-		log.Fatalf("Missing Redis Host")
+		logger.Error(logger.LogData{
+			"action":  "redis_startup",
+			"message": "Missing Redis Host",
+		})
+		os.Exit(1)
 	}
 
 	RedisDB = redis.NewClient(&redis.Options{
@@ -30,15 +34,27 @@ func InitRedis() {
 	_, err := RedisDB.Ping(context.Background()).Result()
 
 	if err != nil {
-		log.Fatalf("Failed to connect to Redis %v", err)
+		logger.Error(logger.LogData{
+			"action":  "redis_startup",
+			"message": "Failed to connect to Redis",
+			"error":   err.Error(),
+		})
+		os.Exit(1)
 	}
 
-	log.Println("Connection to Redis established.")
+	logger.Info(logger.LogData{
+		"action":  "redis_startup",
+		"message": "Connection to Redis established.",
+	})
 }
 
 func GetRedisClient() *redis.Client {
 	if RedisDB == nil {
-		log.Fatalf("Redis client is not initialised. Call InitRedis() first.")
+		logger.Error(logger.LogData{
+			"action":  "redis_startup",
+			"message": "Redis client is not initialised. Call InitRedis() first.",
+		})
+		os.Exit(1)
 	}
 
 	return RedisDB

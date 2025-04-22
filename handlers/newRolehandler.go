@@ -13,7 +13,6 @@ import (
 )
 
 func HandleRoleGained(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string, e eventWorker.Event) {
-
 	if welcomeNewRecruit(s, m, a, e) {
 		return
 	}
@@ -26,11 +25,15 @@ func HandleRoleGained(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []
 }
 
 func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string, e eventWorker.Event) bool {
-	if hasRole(a, roles.GetRoleID("newbro-7102")) && !hasRole(m.Roles, roles.GetRoleID("server_clown-3309")) {
-		logger.Debug(e.TraceID,
-			"welcome new recruit process started: "+m.User.ID)
+	if hasRole(a, roles.GetRecruitRoleID()) && !hasRole(m.Roles, roles.GetServerClownRoleID()) {
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "process_start",
+			"process":   "welcome_new_recruit",
+			"member_id": m.User.ID,
+		})
 
-		channelID := channels.GetChannelID("recruitment-8356")
+		channelID := channels.GetRecruitmentChannel()
 		message := fmt.Sprintf(
 			"Welcome <@%s>! \n\n"+
 				"A member of the recruitment team will be with you shortly. In the meantime, please follow these steps:\n\n"+
@@ -44,32 +47,43 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 		)
 
 		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(e.TraceID,
-				"welcome message sent: "+m.User.ID)
+			logger.Debug(logger.LogData{
+				"trace_id":  e.TraceID,
+				"action":    "welcome_message_sent",
+				"member_id": m.User.ID,
+				"channel":   channelID,
+			})
 
 			_, err := s.ChannelMessageSend(channelID, message)
 			return err
 		})
 
-		if hasRole(m.Roles, roles.GetRoleID("newcomer-9439")) {
+		if hasRole(m.Roles, roles.GetNewcomerRoleID()) {
 			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(e.TraceID,
-					"remove newcomer role: "+m.User.ID)
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "role_removed",
+					"member_id": m.User.ID,
+					"role":      "newcomer",
+				})
 
-				err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetRoleID("newcomer-9439"))
+				err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetNewcomerRoleID())
 				return err
 			})
 		}
 
-		recruitmentChannelID := channels.GetChannelID("recruitment_forum-1311")
+		recruitmentChannelID := channels.GetRecruitmentForum()
 		recruitmentThread, found := helper.FindForumThreadByTitle(s, recruitmentChannelID, m.User.ID)
 
 		if !found {
 			discordAPIWorker.NewRequest(e, func() error {
 				newThreadTitle := fmt.Sprintf("%s - %s", m.User.GlobalName, m.User.ID)
-				logger.Debug(e.TraceID,
-					"create recruitment forum thread: "+m.User.ID,
-				)
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "thread_created",
+					"member_id": m.User.ID,
+					"title":     newThreadTitle,
+				})
 
 				_, err := s.ForumThreadStart(recruitmentChannelID, newThreadTitle, 10080, fmt.Sprintf("%s Joined Recruitment", m.User.GlobalName))
 				if err != nil {
@@ -79,12 +93,13 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 			})
 
 		} else {
-
 			discordAPIWorker.NewRequest(e, func() error {
-
-				logger.Debug(e.TraceID,
-					"reopen recruitment forum thread:  "+m.User.ID,
-				)
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "thread_reopened",
+					"member_id": m.User.ID,
+					"thread_id": recruitmentThread.ID,
+				})
 
 				_, err := s.ChannelEditComplex(recruitmentThread.ID, &discordgo.ChannelEdit{
 					AutoArchiveDuration: 0,
@@ -96,53 +111,67 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 			})
 
 			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(e.TraceID,
-					"add message to recruitment thread: "+m.User.ID,
-				)
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "thread_message_added",
+					"member_id": m.User.ID,
+					"thread_id": recruitmentThread.ID,
+				})
 				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("%s Rejoined Recruitment", m.User.GlobalName))
 				if err != nil {
 					return err
 				}
 				return nil
 			})
-
 		}
-		logger.Debug(e.TraceID,
-			"welcome new recruit process ended: "+m.User.ID,
-		)
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "process_complete",
+			"process":   "welcome_new_recruit",
+			"member_id": m.User.ID,
+		})
 		return true
 	}
 	return false
 }
 
 func recruitAuthenticated(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string, e eventWorker.Event) bool {
-
-	if hasRole(m.Roles, roles.GetRoleID("newbro-7102")) && hasRole(a, roles.GetRoleID("authenticated_guest-1333")) {
-		logger.Debug(e.TraceID,
-			"recruit authenticated process started: "+m.User.ID,
-		)
+	if hasRole(m.Roles, roles.GetRecruitRoleID()) && hasRole(a, roles.GetAuthenticatedGuestRoleID()) {
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "process_start",
+			"process":   "recruit_authenticated",
+			"member_id": m.User.ID,
+		})
 
 		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(e.TraceID,
-				"add message to recruitment thread: "+m.User.ID,
-			)
+			logger.Debug(logger.LogData{
+				"trace_id":  e.TraceID,
+				"action":    "recruitment_message_sent",
+				"member_id": m.User.ID,
+				"channel":   channels.GetRecruitmentHub(),
+			})
 
-			_, err := s.ChannelMessageSend(channels.GetChannelID("recruitment_hub-3185"), fmt.Sprintf("%s has completed the authentication steps.", m.Member.DisplayName()))
+			_, err := s.ChannelMessageSend(channels.GetRecruitmentHub(), fmt.Sprintf("%s has completed the authentication steps.", m.Member.DisplayName()))
 			if err != nil {
 				return err
 			}
 			return nil
 		})
 
-		recruitmentChannelID := channels.GetChannelID("recruitment_forum-1311")
+		recruitmentChannelID := channels.GetRecruitmentForum()
 		recruitmentThread, found := helper.FindForumThreadByTitle(s, recruitmentChannelID, m.User.ID)
 		if found {
 			updatedThreadTitle := fmt.Sprintf("%s - %s", m.Member.DisplayName(), m.User.ID)
 
 			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(e.TraceID,
-					"recruitment thead updated: "+m.User.ID,
-				)
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "thread_updated",
+					"member_id": m.User.ID,
+					"thread_id": recruitmentThread.ID,
+					"new_title": updatedThreadTitle,
+				})
 
 				_, err := s.ChannelEditComplex(recruitmentThread.ID, &discordgo.ChannelEdit{
 					Name: updatedThreadTitle,
@@ -154,9 +183,12 @@ func recruitAuthenticated(s *discordgo.Session, m *discordgo.GuildMemberUpdate, 
 			})
 
 			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(e.TraceID,
-					"channel message sent: "+m.User.ID,
-				)
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "thread_message_added",
+					"member_id": m.User.ID,
+					"thread_id": recruitmentThread.ID,
+				})
 
 				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("%s Authentication Steps Complete.", m.Member.DisplayName()))
 				if err != nil {
@@ -166,48 +198,59 @@ func recruitAuthenticated(s *discordgo.Session, m *discordgo.GuildMemberUpdate, 
 			})
 
 		} else {
-			logger.Info(e.TraceID,
-				"no existing recruitment thread found for: "+m.User.ID,
-			)
+			logger.Info(logger.LogData{
+				"trace_id":  e.TraceID,
+				"action":    "thread_not_found",
+				"member_id": m.User.ID,
+				"message":   "no existing recruitment thread found",
+			})
 		}
-		logger.Debug(e.TraceID,
-			"recruit authenticated process complete: "+m.User.ID,
-		)
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "process_complete",
+			"process":   "recruit_authenticated",
+			"member_id": m.User.ID,
+		})
 		return true
 	}
-
 	return false
-
 }
 
 func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string, e eventWorker.Event) bool {
-
-	if (hasRole(m.Roles, roles.GetRoleID("newbro-7102")) || hasRole(m.Roles, roles.GetRoleID("authenticated_guest-1333"))) && hasRole(a, roles.GetRoleID("authenticated_member-6454")) {
-
-		logger.Debug(e.TraceID,
-			"new member onboarding process started: "+m.User.ID,
-		)
+	if (hasRole(m.Roles, roles.GetRecruitRoleID()) || hasRole(m.Roles, roles.GetAuthenticatedGuestRoleID())) && hasRole(a, roles.GetAuthenticatedMemberRoleID()) {
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "process_start",
+			"process":   "new_member_onboarding",
+			"member_id": m.User.ID,
+		})
 
 		rolesToRemove := []string{
-			"newcomer-9439", "newbro-7102", "guest-4128", "legacy_guest-9234",
+			roles.GetNewcomerRoleID(), roles.GetRecruitRoleID(), roles.GetGuestRoleID(), roles.GetLegacyGuestRoleID(),
 		}
 
-		for _, role := range rolesToRemove {
+		for _, roleID := range rolesToRemove {
 			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(e.TraceID,
-					"remove role: "+role,
-				)
-				err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetRoleID(role))
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "role_removed",
+					"member_id": m.User.ID,
+					"role_id":   roleID,
+				})
+				err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roleID)
 				return err
 			})
 		}
 
-		for _, role := range roles.ContentNotificationRoles {
+		for _, roleID := range roles.ContentNotificationRoles {
 			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(e.TraceID,
-					"add role: "+role,
-				)
-				err := s.GuildMemberRoleAdd(m.GuildID, m.User.ID, roles.GetRoleID(role))
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "role_added",
+					"member_id": m.User.ID,
+					"role_id":   roleID,
+				})
+				err := s.GuildMemberRoleAdd(m.GuildID, m.User.ID, roleID)
 				return err
 			})
 		}
@@ -222,22 +265,27 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 			m.Member.DisplayName(), m.User.ID,
 		)
 
-		channelID := channels.GetChannelID("general-5953")
+		channelID := channels.GetGeneralChannel()
 		discordAPIWorker.NewRequest(e, func() error {
-
-			logger.Debug(e.TraceID,
-				"welcome message sent: "+m.User.ID,
-			)
+			logger.Debug(logger.LogData{
+				"trace_id":  e.TraceID,
+				"action":    "welcome_message_sent",
+				"member_id": m.User.ID,
+				"channel":   channelID,
+			})
 			_, err := s.ChannelMessageSend(channelID, message)
 			return err
 		})
 
-		recruitmentChannelID := channels.GetChannelID("recruitment_forum-1311")
+		recruitmentChannelID := channels.GetRecruitmentForum()
 		recruitmentChannel, err := s.Channel(recruitmentChannelID)
 		if err != nil {
-			logger.Warn(e.TraceID,
-				"Failed to fetch recruitment channel: "+err.Error(),
-			)
+			logger.Warn(logger.LogData{
+				"trace_id":  e.TraceID,
+				"action":    "channel_fetch_failed",
+				"member_id": m.User.ID,
+				"error":     err.Error(),
+			})
 		}
 
 		recruitmentThread, found := helper.FindForumThreadByTitle(s, recruitmentChannelID, m.User.ID)
@@ -253,11 +301,13 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 		}
 
 		if found {
-
 			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(e.TraceID,
-					"add message to recruitment thread: "+m.User.ID,
-				)
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "thread_message_added",
+					"member_id": m.User.ID,
+					"thread_id": recruitmentThread.ID,
+				})
 
 				_, err := s.ChannelMessageSend(recruitmentThread.ID, "Character Joined Corp")
 				return err
@@ -265,9 +315,13 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 
 			isArchived := true
 			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(e.TraceID,
-					"modify recruitment thread: "+m.User.ID,
-				)
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "thread_modified",
+					"member_id": m.User.ID,
+					"thread_id": recruitmentThread.ID,
+					"archived":  true,
+				})
 				_, err := s.ChannelEditComplex(recruitmentThread.ID, &discordgo.ChannelEdit{
 					Archived:    &isArchived,
 					AppliedTags: &tagsToApply,
@@ -278,12 +332,13 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 				return nil
 			})
 		}
-		logger.Debug(e.TraceID,
-			"new member onboarding process complete: "+m.User.ID,
-		)
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "process_complete",
+			"process":   "new_member_onboarding",
+			"member_id": m.User.ID,
+		})
 		return true
-
 	}
-
 	return false
 }

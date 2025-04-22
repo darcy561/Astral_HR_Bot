@@ -15,7 +15,7 @@ func IgnoreBotMessages(discord *discordgo.Session, message *discordgo.MessageCre
 }
 
 func SendMessageOnMemberJoin(s *discordgo.Session, m *discordgo.GuildMemberAdd, e eventWorker.Event) bool {
-	channelID := channels.GetChannelID("landing-1529")
+	channelID := channels.GetLandingChannel()
 	message := fmt.Sprintf("%s Joined The Server.", m.User.GlobalName)
 
 	discordAPIWorker.NewRequest(e, func() error {
@@ -23,13 +23,19 @@ func SendMessageOnMemberJoin(s *discordgo.Session, m *discordgo.GuildMemberAdd, 
 		return err
 	})
 
-	logger.Debug(e.TraceID, "send message on member join middleware: Passed")
+	logger.Debug(logger.LogData{
+		"trace_id":   e.TraceID,
+		"action":     "middleware_pass",
+		"middleware": "send_message_on_member_join",
+		"member_id":  m.User.ID,
+		"message":    "Passed",
+	})
 
 	return true
 }
 
 func SendMessageOnMemberLeave(s *discordgo.Session, m *discordgo.GuildMemberRemove, e eventWorker.Event) bool {
-	channelID := channels.GetChannelID("leavers-5053")
+	channelID := channels.GetLeaversChannel()
 	message := fmt.Sprintf("%s Left The Server.", m.User.GlobalName)
 
 	discordAPIWorker.NewRequest(e, func() error {
@@ -37,7 +43,13 @@ func SendMessageOnMemberLeave(s *discordgo.Session, m *discordgo.GuildMemberRemo
 		return err
 	})
 
-	logger.Debug(e.TraceID, "send message on member leave middleware: Passed")
+	logger.Debug(logger.LogData{
+		"trace_id":   e.TraceID,
+		"action":     "middleware_pass",
+		"middleware": "send_message_on_member_leave",
+		"member_id":  m.User.ID,
+		"message":    "Passed",
+	})
 
 	return true
 }

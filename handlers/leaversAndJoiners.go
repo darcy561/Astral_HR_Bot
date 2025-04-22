@@ -28,7 +28,11 @@ func memberJoiningServerHandlers(e eventWorker.Event) {
 	p, t := e.Payload, e.TraceID
 
 	if len(p) < 2 {
-		logger.Error(t, "handle role changes: invalid arguments")
+		logger.Error(logger.LogData{
+			"trace_id": t,
+			"action":   "invalid_args",
+			"message":  "handle role changes: invalid arguments",
+		})
 		return
 	}
 
@@ -36,7 +40,11 @@ func memberJoiningServerHandlers(e eventWorker.Event) {
 	m, ok2 := p[1].(*discordgo.GuildMemberAdd)
 
 	if !ok1 || !ok2 {
-		logger.Error(t, "handle role changes: type assertion failed")
+		logger.Error(logger.LogData{
+			"trace_id": t,
+			"action":   "type_assertion_failed",
+			"message":  "handle role changes: type assertion failed",
+		})
 		return
 	}
 
@@ -45,14 +53,17 @@ func memberJoiningServerHandlers(e eventWorker.Event) {
 			return
 		}
 	}
-
 }
 
 func memberLeavingSererHandlers(e eventWorker.Event) {
 	p, t := e.Payload, e.TraceID
 
 	if len(p) < 2 {
-		logger.Error(t, "handle role changes: invalid arguments")
+		logger.Error(logger.LogData{
+			"trace_id": t,
+			"action":   "invalid_args",
+			"message":  "handle role changes: invalid arguments",
+		})
 		return
 	}
 
@@ -60,7 +71,11 @@ func memberLeavingSererHandlers(e eventWorker.Event) {
 	m, ok2 := p[1].(*discordgo.GuildMemberRemove)
 
 	if !ok1 || !ok2 {
-		logger.Error(t, "handle role changes: type assertion failed")
+		logger.Error(logger.LogData{
+			"trace_id": t,
+			"action":   "type_assertion_failed",
+			"message":  "handle role changes: type assertion failed",
+		})
 		return
 	}
 	for _, middleware := range guildMemberRemoveMiddleware {
@@ -68,5 +83,4 @@ func memberLeavingSererHandlers(e eventWorker.Event) {
 			return
 		}
 	}
-
 }

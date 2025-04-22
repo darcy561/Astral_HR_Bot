@@ -22,7 +22,11 @@ func handleRoleChanges(e eventWorker.Event) {
 	p, t := e.Payload, e.TraceID
 
 	if len(p) < 2 {
-		logger.Error(t, "handle role changes: invalid arguments")
+		logger.Error(logger.LogData{
+			"trace_id": t,
+			"action":   "invalid_args",
+			"message":  "handle role changes: invalid arguments",
+		})
 		return
 	}
 
@@ -30,7 +34,11 @@ func handleRoleChanges(e eventWorker.Event) {
 	m, ok2 := p[1].(*discordgo.GuildMemberUpdate)
 
 	if !ok1 || !ok2 {
-		logger.Error(t, "handle role changes: type assertion failed")
+		logger.Error(logger.LogData{
+			"trace_id": t,
+			"action":   "type_assertion_failed",
+			"message":  "handle role changes: type assertion failed",
+		})
 		return
 	}
 
@@ -45,12 +53,22 @@ func handleRoleChanges(e eventWorker.Event) {
 	if m.BeforeUpdate != nil && m.BeforeUpdate.Roles != nil {
 		oldRoles = m.BeforeUpdate.Roles
 	} else {
-		logger.Warn(t, "No old roles to compare, assuming none existed.")
+		logger.Warn(logger.LogData{
+			"trace_id":  t,
+			"action":    "no_old_roles",
+			"member_id": m.User.ID,
+			"message":   "No old roles to compare, assuming none existed.",
+		})
 	}
 	if m.Roles != nil {
 		newRoles = m.Roles
 	} else {
-		logger.Warn(t, "No old roles to compare, assuming none existed.")
+		logger.Warn(logger.LogData{
+			"trace_id":  t,
+			"action":    "no_new_roles",
+			"member_id": m.User.ID,
+			"message":   "No new roles to compare, assuming none existed.",
+		})
 	}
 
 	addedRoles := []string{}
@@ -74,7 +92,14 @@ func handleRoleChanges(e eventWorker.Event) {
 	if len(removedRoles) > 0 {
 		HandleRoleLost(s, m, removedRoles, e)
 	}
-	logger.Debug(t, "handle role change complete.")
+	logger.Debug(logger.LogData{
+		"trace_id":  t,
+		"action":    "role_change_complete",
+		"member_id": m.User.ID,
+		"added":     addedRoles,
+		"removed":   removedRoles,
+		"message":   "handle role change complete.",
+	})
 }
 
 func hasRole(roles []string, roleID string) bool {

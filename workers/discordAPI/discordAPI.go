@@ -3,7 +3,6 @@ package discordAPIWorker
 import (
 	"astralHRBot/logger"
 	"astralHRBot/workers/eventWorker"
-	"log"
 	"sync"
 	"time"
 
@@ -42,13 +41,20 @@ func NewWorker(s *discordgo.Session) {
 
 func (w *DiscordAPISubmissionWorker) run() {
 	defer w.wg.Done()
-	log.Println("DiscordAPIWoker Running")
+	logger.Info(logger.LogData{
+		"action":  "discord_api_worker_startup",
+		"message": "DiscordAPIWoker Running",
+	})
 	workerReady.Done()
 	for {
 		select {
 		case request := <-w.requestQueue:
 			if err := request.Execute(); err != nil {
-				logger.Error(request.Event.TraceID, err.Error())
+				logger.Error(logger.LogData{
+					"trace_id": request.Event.TraceID,
+					"action":   "discord_api_error",
+					"error":    err.Error(),
+				})
 			}
 			time.Sleep(1 * time.Second)
 
@@ -60,7 +66,10 @@ func (w *DiscordAPISubmissionWorker) run() {
 
 func NewRequest(e eventWorker.Event, f func() error) {
 	if discordAPIWorker == nil {
-		log.Println("Worker not initialized yet!")
+		logger.Error(logger.LogData{
+			"action":  "discord_api_worker_not_initialized",
+			"message": "Worker not initialized yet!",
+		})
 		return
 	}
 
