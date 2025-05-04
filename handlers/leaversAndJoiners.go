@@ -19,9 +19,9 @@ var guildMemberRemoveMiddleware = []GuildMemberRemoveMiddleware{
 func MemberLeaversAndJoiners(s *discordgo.Session, d any) {
 	switch t := d.(type) {
 	case *discordgo.GuildMemberAdd:
-		eventWorker.AddEvent(t.User.ID, memberJoiningServerHandlers, s, t)
+		eventWorker.Submit(t.User.ID, memberJoiningServerHandlers, s, t)
 	case *discordgo.GuildMemberRemove:
-		eventWorker.AddEvent(t.User.ID, memberLeavingSererHandlers, s, t)
+		eventWorker.Submit(t.User.ID, memberLeavingSererHandlers, s, t)
 	}
 }
 

@@ -13,7 +13,7 @@ var messageCreateMiddleware = []MessageCreateMiddleware{
 }
 
 func MessageHandlers(s *discordgo.Session, m *discordgo.MessageCreate) {
-	eventWorker.AddEvent(
+	eventWorker.Submit(
 		m.Author.ID,
 		func(e eventWorker.Event) {
 			p, t := e.Payload, e.TraceID

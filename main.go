@@ -19,6 +19,6 @@ func main() {
 	bot.Setup()
 
 	discordAPIWorker.NewWorker(bot.Discord)
-	eventWorker.NewWorker()
+	eventWorker.NewWorkerPool()
 	bot.Start()
 }

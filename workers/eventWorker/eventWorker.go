@@ -1,8 +1,9 @@
 package eventWorker
 
 import (
+	"astralHRBot/bot/identity"
 	"astralHRBot/logger"
-	"fmt"
+	"errors"
 	"sync"
 	"time"
 
@@ -16,245 +17,160 @@ type Event struct {
 	Payload []any
 }
 
-type UserQueue struct {
-	mu            sync.Mutex
-	userQueues    map[string]chan Event
-	workerPool    chan struct{}
-	maxWorkers    int
-	scalingTicker *time.Ticker
-	stopScaling   chan bool
-	workerTimeout time.Duration
+type WorkerPool struct {
+	mu           sync.Mutex
+	userChannels map[string]chan Event
+	idleTimeout  time.Duration
+	shuttingDown bool
+	wg           sync.WaitGroup
 }
 
-var (
-	EventWorker *UserQueue
-	once        sync.Once
-)
+var wp *WorkerPool
 
-func NewWorker() {
-	once.Do(func() {
-		logger.System(logger.LogData{
-			"action":  "init_worker",
-			"message": "Initializing event worker system",
-		})
-		EventWorker = &UserQueue{
-			userQueues:    make(map[string]chan Event),
-			workerPool:    make(chan struct{}, 5),
-			maxWorkers:    5,
-			scalingTicker: time.NewTicker(5 * time.Second),
-			stopScaling:   make(chan bool),
-			workerTimeout: 30 * time.Second,
-		}
-		go EventWorker.autoScale()
-		logger.System(logger.LogData{
-			"action":  "worker_ready",
-			"message": "Event worker system initialized and autoscaling started",
-		})
+// NewWorkerPool initializes the singleton worker pool
+func NewWorkerPool() *WorkerPool {
+	wp = &WorkerPool{
+		userChannels: make(map[string]chan Event),
+		idleTimeout:  10 * time.Second,
+	}
+	logger.Info(logger.LogData{
+		"action":  "worker_pool_init",
+		"message": "Worker pool initialized",
 	})
+	return wp
 }
 
-func (uq *UserQueue) startWorker(userID string) {
-	logger.SystemDebug(logger.LogData{
-		"action":  "acquire_worker",
-		"user_id": userID,
-	})
-	uq.workerPool <- struct{}{}
-	logger.SystemDebug(logger.LogData{
-		"action":  "start_worker",
-		"user_id": userID,
-	})
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.System(logger.LogData{
-					"action":  "worker_panic",
-					"user_id": userID,
-					"error":   fmt.Sprintf("%v", r),
-				})
-			}
-			logger.SystemDebug(logger.LogData{
-				"action":  "worker_cleanup",
-				"user_id": userID,
-			})
-			<-uq.workerPool
-			logger.SystemDebug(logger.LogData{
-				"action":  "worker_release",
-				"user_id": userID,
-			})
-		}()
-		EventWorker.processUserQueue(userID)
-	}()
-}
-
-func AddEvent(userID string, handler func(Event), payload ...any) {
-	event := Event{
-		UserID:  userID,
-		Handler: handler,
-		TraceID: uuid.New().String(),
-		Payload: payload,
+// Submit adds an event to the appropriate user's channel
+func Submit(userID string, handler func(Event), payload ...any) error {
+	if wp == nil {
+		return errors.New("worker pool not initialized")
 	}
 
-	logger.SystemDebug(logger.LogData{
-		"action":   "add_event",
-		"user_id":  userID,
-		"trace_id": event.TraceID,
-	})
-
-	EventWorker.mu.Lock()
-	defer EventWorker.mu.Unlock()
-
-	if _, exists := EventWorker.userQueues[event.UserID]; !exists {
-		logger.SystemDebug(logger.LogData{
-			"action":  "create_queue",
+	// Skip events from the bot itself
+	if userID == identity.GetBotID() {
+		logger.Debug(logger.LogData{
+			"action":  "skip_bot_event",
+			"message": "Skipping event from bot",
 			"user_id": userID,
 		})
-		EventWorker.userQueues[event.UserID] = make(chan Event)
-		go EventWorker.startWorker(event.UserID)
+		return nil
 	}
 
-	userQueue := EventWorker.userQueues[event.UserID]
-	userQueue <- event
-	logger.SystemDebug(logger.LogData{
-		"action":   "event_queued",
-		"user_id":  userID,
-		"trace_id": event.TraceID,
-	})
-}
+	wp.mu.Lock()
+	if wp.shuttingDown {
+		wp.mu.Unlock()
+		return errors.New("worker pool is shutting down")
+	}
 
-func (uq *UserQueue) processUserQueue(userID string) {
-	queue := uq.userQueues[userID]
-	logger.SystemDebug(logger.LogData{
-		"action":  "start_processing",
-		"user_id": userID,
-	})
+	event := Event{
+		UserID:  userID,
+		TraceID: uuid.New().String(),
+		Payload: payload,
+		Handler: handler,
+	}
 
-	for event := range queue {
-		startTime := time.Now()
-		logger.SystemDebug(logger.LogData{
-			"action":   "process_event",
-			"user_id":  userID,
-			"trace_id": event.TraceID,
+	ch, exists := wp.userChannels[userID]
+	if !exists {
+		ch = make(chan Event, 100)
+		wp.userChannels[userID] = ch
+		wp.wg.Add(1)
+		go wp.startUserRoutine(userID, ch)
+		logger.Debug(logger.LogData{
+			"action":  "new_user_routine",
+			"message": "Started new user routine",
+			"user_id": userID,
 		})
-
-		// Process event with timeout
-		done := make(chan bool)
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					logger.System(logger.LogData{
-						"action":   "handler_panic",
-						"user_id":  userID,
-						"trace_id": event.TraceID,
-						"error":    fmt.Sprintf("%v", r),
-					})
-					done <- false
-				}
-			}()
-			event.Handler(event)
-			done <- true
-		}()
-
-		select {
-		case success := <-done:
-			processingTime := time.Since(startTime)
-			if success {
-				logger.SystemDebug(logger.LogData{
-					"action":          "event_complete",
-					"user_id":         userID,
-					"trace_id":        event.TraceID,
-					"processing_time": processingTime.String(),
-				})
-			} else {
-				logger.System(logger.LogData{
-					"action":          "event_failed",
-					"user_id":         userID,
-					"trace_id":        event.TraceID,
-					"processing_time": processingTime.String(),
-				})
-			}
-		case <-time.After(uq.workerTimeout):
-			logger.System(logger.LogData{
-				"action":   "event_timeout",
-				"user_id":  userID,
-				"trace_id": event.TraceID,
-			})
-		}
-
-		// Check if queue is empty after processing
-		uq.mu.Lock()
-		if len(queue) == 0 {
-			logger.SystemDebug(logger.LogData{
-				"action":  "cleanup_queue",
-				"user_id": userID,
-			})
-			delete(uq.userQueues, userID)
-			uq.mu.Unlock()
-			return
-		}
-		uq.mu.Unlock()
 	}
+	wp.mu.Unlock()
+
+	ch <- event
+	return nil
 }
 
-func (uq *UserQueue) autoScale() {
-	logger.SystemDebug(logger.LogData{
-		"action": "start_autoscaling",
-	})
+// startUserRoutine manages the processing of events for a user
+func (wp *WorkerPool) startUserRoutine(userID string, ch chan Event) {
+	defer wp.wg.Done()
+	idleTimer := time.NewTimer(wp.idleTimeout)
+	defer idleTimer.Stop()
+
 	for {
 		select {
-		case <-uq.stopScaling:
-			logger.SystemDebug(logger.LogData{
-				"action": "stop_autoscaling",
-			})
-			uq.scalingTicker.Stop()
-			return
-		case <-uq.scalingTicker.C:
-			uq.adjustedWorkers()
+		case event, ok := <-ch:
+			if !ok {
+				logger.Debug(logger.LogData{
+					"action":  "routine_shutdown",
+					"message": "User routine shutting down",
+					"user_id": userID,
+				})
+				return // channel closed externally
+			}
+			safeHandle(event)
+
+			// Reset idle timer on activity
+			if !idleTimer.Stop() {
+				<-idleTimer.C
+			}
+			idleTimer.Reset(wp.idleTimeout)
+
+		case <-idleTimer.C:
+			wp.mu.Lock()
+			if len(ch) == 0 {
+				close(ch)
+				delete(wp.userChannels, userID)
+				logger.Debug(logger.LogData{
+					"action":  "cleanup",
+					"message": "Cleaned up user due to inactivity",
+					"user_id": userID,
+				})
+				wp.mu.Unlock()
+				return
+			}
+			idleTimer.Reset(wp.idleTimeout)
+			wp.mu.Unlock()
 		}
 	}
 }
 
-func (uq *UserQueue) adjustedWorkers() {
-	uq.mu.Lock()
-	defer uq.mu.Unlock()
-
-	// First, clean up any empty queues
-	cleanedQueues := 0
-	for userID, queue := range uq.userQueues {
-		if len(queue) == 0 {
-			delete(uq.userQueues, userID)
-			cleanedQueues++
+// safeHandle wraps event handling to recover from potential panics
+func safeHandle(e Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error(logger.LogData{
+				"trace_id": e.TraceID,
+				"action":   "handler_panic",
+				"message":  "Recovered from panic in handler",
+				"user_id":  e.UserID,
+				"error":    r,
+			})
 		}
-	}
-	if cleanedQueues > 0 {
-		logger.SystemDebug(logger.LogData{
-			"action": "cleanup_queues",
-			"count":  cleanedQueues,
-		})
+	}()
+	e.Handler(e)
+}
+
+// Shutdown gracefully shuts down the worker pool
+func Shutdown() {
+	if wp == nil {
+		return
 	}
 
-	activeQueues := len(uq.userQueues)
-	currentWorkers := len(uq.workerPool)
-
-	if activeQueues > currentWorkers && currentWorkers < uq.maxWorkers {
-		additionalWorkers := min(uq.maxWorkers-currentWorkers, activeQueues-currentWorkers)
-		logger.SystemDebug(logger.LogData{
-			"action":          "add_workers",
-			"count":           additionalWorkers,
-			"current_workers": currentWorkers,
-			"max_workers":     uq.maxWorkers,
-		})
-		for range additionalWorkers {
-			uq.workerPool <- struct{}{}
-		}
-	} else if activeQueues == 0 && currentWorkers > 1 {
-		extraWorkers := currentWorkers - 1
-		logger.SystemDebug(logger.LogData{
-			"action":          "remove_workers",
-			"count":           extraWorkers,
-			"current_workers": currentWorkers,
-		})
-		for range extraWorkers {
-			<-uq.workerPool
-		}
+	wp.mu.Lock()
+	wp.shuttingDown = true
+	userCount := len(wp.userChannels)
+	for _, ch := range wp.userChannels {
+		close(ch)
 	}
+	wp.mu.Unlock()
+
+	logger.Info(logger.LogData{
+		"action":     "shutdown_start",
+		"message":    "Starting worker pool shutdown",
+		"user_count": userCount,
+	})
+
+	// Wait for all routines to finish
+	wp.wg.Wait()
+	logger.Info(logger.LogData{
+		"action":  "shutdown_complete",
+		"message": "Worker pool has shut down gracefully",
+	})
 }

@@ -11,11 +11,7 @@ import (
 var guildMemberUpdateMiddleware = []GuildMemberUpdateMiddleware{}
 
 func GuildMemberUpdateHandlers(s *discordgo.Session, m *discordgo.GuildMemberUpdate) {
-	eventWorker.AddEvent(
-		m.User.ID,
-		handleRoleChanges,
-		s, m,
-	)
+	eventWorker.Submit(m.User.ID, handleRoleChanges, s, m)
 }
 
 func handleRoleChanges(e eventWorker.Event) {

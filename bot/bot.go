@@ -3,6 +3,8 @@ package bot
 import (
 	"astralHRBot/handlers"
 	"astralHRBot/logger"
+	discordAPIWorker "astralHRBot/workers/discordAPI"
+	"astralHRBot/workers/eventWorker"
 	"os"
 	"os/signal"
 	"syscall"
@@ -79,6 +81,8 @@ func Start() {
 			"action":  "server_shutdown",
 			"message": "Astral HR Bot is shutting down...",
 		})
+		eventWorker.Shutdown()
+		discordAPIWorker.Stop()
 		if err := Discord.Close(); err != nil {
 			logger.Error(logger.LogData{
 				"action":  "server_shutdown",
@@ -86,5 +90,9 @@ func Start() {
 				"error":   err.Error(),
 			})
 		}
+		logger.Info(logger.LogData{
+			"action":  "server_shutdown",
+			"message": "Astral HR Bot has shut down gracefully.",
+		})
 	}()
 }

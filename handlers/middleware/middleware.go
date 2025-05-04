@@ -58,7 +58,8 @@ func SendMessageOnMemberLeave(s *discordgo.Session, m *discordgo.GuildMemberRemo
 // CreateOrUpdateUserMiddleware sends an event to handle user creation/updates in Redis when a member joins
 func CreateOrUpdateUserMiddleware(s *discordgo.Session, m *discordgo.GuildMemberAdd, e eventWorker.Event) bool {
 	// Send the user creation event to the event worker
-	eventWorker.AddEvent(m.User.ID, users.CreateOrUpdateUser, m.User)
+
+	eventWorker.Submit(m.User.ID, users.CreateOrUpdateUser, m.User)
 
 	logger.Debug(logger.LogData{
 		"trace_id":   e.TraceID,
