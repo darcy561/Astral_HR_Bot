@@ -2,13 +2,18 @@ package handlers
 
 import (
 	"astralHRBot/channels"
+	"astralHRBot/db"
 	"astralHRBot/helper"
 	"astralHRBot/logger"
+	"astralHRBot/models"
 	"astralHRBot/roles"
 	"astralHRBot/users"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
+	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -137,6 +142,27 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 				"member_id": m.User.ID,
 			})
 		}
+
+		params, err := json.Marshal(models.RecruitmentCleanupParams{UserID: m.User.ID})
+		if err != nil {
+			logger.Error(logger.LogData{
+				"trace_id": e.TraceID,
+				"action":   "marshal_params",
+				"error":    err.Error(),
+			})
+			return true
+		}
+
+		newTask := models.Task{
+			FunctionName:  models.TaskRecruitmentCleanup,
+			Params:        params,
+			ScheduledTime: time.Now().Add(time.Minute * 1).Unix(),
+			Status:        "pending",
+			Retries:       0,
+			CreatedBy:     "system",
+		}
+
+		db.SaveTaskToRedis(context.Background(), newTask)
 
 		logger.Debug(logger.LogData{
 			"trace_id":  e.TraceID,
@@ -327,6 +353,51 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 				return err
 			})
 
+			params, err := json.Marshal(models.UserCheckinParams{UserID: m.User.ID})
+			if err != nil {
+				logger.Error(logger.LogData{
+					"trace_id": e.TraceID,
+					"action":   "marshal_params",
+					"error":    err.Error(),
+				})
+			}
+			newTask := models.Task{
+				FunctionName:  models.TaskUserCheckin,
+				Params:        params,
+				ScheduledTime: time.Now().Add(time.Minute * 1).Unix(),
+				Status:        "pending",
+				Retries:       0,
+				CreatedBy:     "system",
+			}
+
+			err = db.SaveTaskToRedis(context.Background(), newTask)
+			if err != nil {
+				logger.Error(logger.LogData{
+					"trace_id": e.TraceID,
+					"action":   "save_task_to_redis",
+					"error":    err.Error(),
+				})
+			}
+
+			discordAPIWorker.NewRequest(e, func() error {
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "task_created",
+					"member_id": m.User.ID,
+				})
+				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("Checkin task created"))
+
+				if err != nil {
+					logger.Error(logger.LogData{
+						"trace_id": e.TraceID,
+						"action":   "send_message",
+						"error":    err.Error(),
+					})
+					return err
+				}
+				return nil
+			})
+
 			isArchived := true
 			discordAPIWorker.NewRequest(e, func() error {
 				logger.Debug(logger.LogData{
@@ -341,11 +412,17 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 					AppliedTags: &tagsToApply,
 				})
 				if err != nil {
+					logger.Error(logger.LogData{
+						"trace_id": e.TraceID,
+						"action":   "edit_thread",
+						"error":    err.Error(),
+					})
 					return err
 				}
 				return nil
 			})
 		}
+
 		logger.Debug(logger.LogData{
 			"trace_id":  e.TraceID,
 			"action":    "process_complete",

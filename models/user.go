@@ -5,7 +5,7 @@ import (
 )
 
 type User struct {
-	DiscordID             int
+	DiscordID             string
 	CurrentDisplayName    string
 	CurrentJoinDate       time.Time
 	PreviousJoinDate      time.Time

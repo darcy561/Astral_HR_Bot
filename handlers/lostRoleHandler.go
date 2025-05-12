@@ -1,10 +1,14 @@
 package handlers
 
 import (
+	"astralHRBot/channels"
+	"astralHRBot/helper"
 	"astralHRBot/logger"
 	"astralHRBot/roles"
+	"astralHRBot/users"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
+	"fmt"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -14,6 +18,9 @@ func HandleRoleLost(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []st
 		return
 	}
 	if memberLosesBlueRole(s, m, r, e) {
+		return
+	}
+	if memberLosesRecruitRole(s, m, r, e) {
 		return
 	}
 }
@@ -89,6 +96,47 @@ func memberLosesBlueRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r
 			"member_id": m.User.ID,
 			"message":   "Member Loses Blue Role Complete",
 		})
+
+		return true
+	}
+	return false
+}
+
+func memberLosesRecruitRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string, e eventWorker.Event) bool {
+	if hasRole(r, roles.GetRecruitRoleID()) && !hasRole(m.Roles, roles.GetMemberRoleID()) {
+
+		err := users.RemoveRecruitmentDate(m.User.ID)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"trace_id":  e.TraceID,
+				"action":    "remove_recruitment_date",
+				"member_id": m.User.ID,
+			})
+		}
+
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "process_complete",
+			"process":   "member_lose_recruit",
+			"member_id": m.User.ID,
+			"message":   "Member Loses Recruit Role Complete",
+		})
+
+		recruitmentChannelID := channels.GetRecruitmentForum()
+		recruitmentThread, found := helper.FindForumThreadByTitle(s, recruitmentChannelID, m.User.ID)
+
+		if found {
+			discordAPIWorker.NewRequest(e, func() error {
+				logger.Debug(logger.LogData{
+					"trace_id":  e.TraceID,
+					"action":    "thread_message_added",
+					"member_id": m.User.ID,
+					"thread_id": recruitmentThread.ID,
+				})
+				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("%s has left the recruitment channel.", m.User.GlobalName))
+				return err
+			})
+		}
 
 		return true
 	}

@@ -6,7 +6,6 @@ import (
 	"astralHRBot/models"
 	"astralHRBot/workers/eventWorker"
 	"context"
-	"strconv"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -34,23 +33,11 @@ func CreateOrUpdateUser(e eventWorker.Event) {
 		return
 	}
 
-	discordID, err := strconv.Atoi(user.ID)
-	if err != nil {
-		logger.Error(logger.LogData{
-			"trace_id": t,
-			"action":   "user_creation",
-			"message":  "Failed to convert Discord ID to integer",
-			"error":    err.Error(),
-			"user_id":  user.ID,
-		})
-		return
-	}
-
 	ctx := context.Background()
-	existingUser, err := db.GetUserFromRedis(ctx, discordID)
+	existingUser, err := db.GetUserFromRedis(ctx, user.ID)
 	if err != nil {
 		newUser := &models.User{
-			DiscordID:          discordID,
+			DiscordID:          user.ID,
 			CurrentDisplayName: user.GlobalName,
 			CurrentJoinDate:    time.Now(),
 			Monitored:          false,
@@ -107,23 +94,12 @@ func CreateOrUpdateUser(e eventWorker.Event) {
 func UpdateRecruitmentDate(userID string) error {
 	ctx := context.Background()
 
-	discordID, err := strconv.Atoi(userID)
-	if err != nil {
-		logger.Error(logger.LogData{
-			"action":  "user_update",
-			"message": "Failed to convert Discord ID to integer",
-			"error":   err.Error(),
-			"user_id": userID,
-		})
-		return err
-	}
-
-	key := "User:" + strconv.Itoa(discordID)
+	key := "User:" + userID
 	fields := map[string]any{
 		"DateJoinedRecruitment": time.Now(),
 	}
 
-	err = db.UpdateHashFields(ctx, key, fields)
+	err := db.UpdateHashFields(ctx, key, fields)
 	if err != nil {
 		logger.Error(logger.LogData{
 			"action":  "user_update",
@@ -141,6 +117,34 @@ func UpdateRecruitmentDate(userID string) error {
 		"details": map[string]any{
 			"recruitment_date": time.Now(),
 		},
+	})
+
+	return nil
+}
+
+func RemoveRecruitmentDate(userID string) error {
+	ctx := context.Background()
+
+	key := "User:" + userID
+	fields := map[string]any{
+		"DateJoinedRecruitment": nil,
+	}
+
+	err := db.UpdateHashFields(ctx, key, fields)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "user_update",
+			"message": "Failed to remove recruitment date from Redis",
+			"error":   err.Error(),
+			"user_id": userID,
+		})
+		return err
+	}
+
+	logger.Debug(logger.LogData{
+		"action":  "user_update",
+		"message": "Removed recruitment date from Redis",
+		"user_id": userID,
 	})
 
 	return nil

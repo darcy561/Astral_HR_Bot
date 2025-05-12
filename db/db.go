@@ -4,6 +4,7 @@ import (
 	"astralHRBot/logger"
 	"astralHRBot/models"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -60,9 +61,9 @@ func GetRedisClient() *redis.Client {
 	return RedisDB
 }
 
-func GetUserFromRedis(ctx context.Context, userID int) (*models.User, error) {
+func GetUserFromRedis(ctx context.Context, userID string) (*models.User, error) {
 
-	key := "User:" + strconv.Itoa(userID)
+	key := "User:" + userID
 
 	data, err := RedisDB.HGetAll(ctx, key).Result()
 	if err != nil {
@@ -75,8 +76,8 @@ func GetUserFromRedis(ctx context.Context, userID int) (*models.User, error) {
 
 	user := &models.User{}
 
-	if DiscordID, err := strconv.ParseInt(data["DiscordID"], 10, 64); err == nil {
-		user.DiscordID = int(DiscordID)
+	if DiscordID, exists := data["DiscordID"]; exists {
+		user.DiscordID = DiscordID
 	}
 
 	if PreviousJoinDate, err := time.Parse(time.RFC3339, data["PreviousJoinDate"]); err == nil {
@@ -96,7 +97,7 @@ func GetUserFromRedis(ctx context.Context, userID int) (*models.User, error) {
 }
 
 func SaveUserToRedis(ctx context.Context, user *models.User) error {
-	key := "User:" + strconv.Itoa(user.DiscordID)
+	key := "User:" + user.DiscordID
 
 	userMap, err := structToMap(user)
 	if err != nil {
@@ -195,4 +196,170 @@ func structToMap(input interface{}) (map[string]interface{}, error) {
 	}
 
 	return result, nil
+}
+
+func FetchLatestTasks(ctx context.Context) ([]models.Task, error) {
+	taskQueue := "taskQueue"
+	now := time.Now().Unix()
+
+	taskIDs, err := RedisDB.ZRangeByScore(ctx, taskQueue, &redis.ZRangeBy{
+		Min:    "0",
+		Max:    fmt.Sprintf("%d", now),
+		Offset: 0,
+		Count:  100,
+	}).Result()
+
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "fetch_latest_tasks",
+			"message": "Failed to fetch latest tasks",
+			"error":   err.Error(),
+		})
+		return nil, err
+	}
+
+	tasks := make([]models.Task, len(taskIDs))
+
+	for i, taskID := range taskIDs {
+		task, err := getTaskByID(ctx, taskID)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"action":  "fetch_latest_tasks",
+				"message": "Failed to get task by ID",
+				"error":   err.Error(),
+			})
+			return nil, err
+		}
+		tasks[i] = task
+	}
+
+	return tasks, nil
+}
+
+func getTaskByID(ctx context.Context, taskID string) (models.Task, error) {
+	data, err := RedisDB.Get(ctx, "task:"+taskID).Result()
+	if err != nil {
+		return models.Task{}, err
+	}
+	var task models.Task
+	err = json.Unmarshal([]byte(data), &task)
+	return task, err
+}
+
+func SaveTaskToRedis(ctx context.Context, task models.Task) error {
+	key := "task:" + task.TaskID
+
+	// Marshal task to JSON before saving
+	taskJSON, err := json.Marshal(task)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "save_task_to_redis",
+			"message": "Failed to marshal task to JSON",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	err = RedisDB.Set(ctx, key, taskJSON, 0).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "save_task_to_redis",
+			"message": "Failed to save task to redis",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	err = RedisDB.ZAdd(ctx, "taskQueue", redis.Z{
+		Score:  float64(task.ScheduledTime),
+		Member: task.TaskID,
+	}).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "save_task_to_redis",
+			"message": "Failed to add task to queue",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	logger.Debug(logger.LogData{
+		"action":  "save_task_to_redis",
+		"message": "Task saved to redis",
+		"task_id": task.TaskID,
+	})
+
+	return nil
+}
+
+func DeleteTaskFromRedis(ctx context.Context, taskID string) error {
+	err := RedisDB.Del(ctx, "task:"+taskID).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "delete_task_from_redis",
+			"message": "Failed to delete task from redis",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	err = RedisDB.ZRem(ctx, "taskQueue", taskID).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "delete_task_from_redis",
+			"message": "Failed to remove task from queue",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	return nil
+}
+
+func GetTrackedUsers(ctx context.Context) ([]string, error) {
+
+	users, err := RedisDB.SMembers(ctx, "trackedUsers").Result()
+
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "get tracked users from redis",
+			"message": "failed to retrieve tracked users",
+			"error":   err.Error(),
+		})
+		return nil, err
+	}
+
+	return users, nil
+}
+
+func IncreaseAttributeCount(ctx context.Context, key string, attribute string, amount int) error {
+
+	err := RedisDB.HIncrBy(ctx, key, attribute, int64(amount)).Err()
+
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "increase_attribute_count",
+			"message": "failed to increase attribute count",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	return nil
+}
+
+func DecreaseAttributeCount(ctx context.Context, key string, attribute string, amount int) error {
+
+	err := RedisDB.HIncrBy(ctx, key, attribute, int64(-amount)).Err()
+
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "decrease_attribute_count",
+			"message": "failed to decrease attribute count",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	return nil
 }

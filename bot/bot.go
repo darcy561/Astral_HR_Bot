@@ -14,6 +14,8 @@ import (
 
 var (
 	Discord *discordgo.Session
+	// ReadyChan signals when Discord connection is established
+	ReadyChan chan struct{}
 )
 
 func Setup() {
@@ -44,6 +46,9 @@ func Setup() {
 	Discord.AddHandler(handlers.ManageGuildChanges)
 
 	Discord.Identify.Intents = discordgo.IntentsAll
+
+	// Initialize the ready channel
+	ReadyChan = make(chan struct{})
 }
 
 func Start() {
@@ -66,6 +71,9 @@ func Start() {
 		"action":  "server_startup",
 		"message": "Connection to Discord established successfully.",
 	})
+
+	// Signal that Discord is ready
+	close(ReadyChan)
 
 	logger.Info(logger.LogData{
 		"action":  "server_startup",
