@@ -10,6 +10,7 @@ import (
 
 var messageCreateMiddleware = []MessageCreateMiddleware{
 	middleware.IgnoreBotMessages,
+	middleware.MonitorUserActivity,
 }
 
 func MessageHandlers(s *discordgo.Session, m *discordgo.MessageCreate) {

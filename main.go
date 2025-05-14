@@ -6,6 +6,7 @@ import (
 	"astralHRBot/logger"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
+	"astralHRBot/workers/monitoring"
 	"astralHRBot/workers/taskworker"
 )
 
@@ -22,5 +23,7 @@ func main() {
 	discordAPIWorker.NewWorker(bot.Discord)
 	eventWorker.NewWorkerPool()
 	taskworker.StartTaskProcessor()
+	monitoring.Start()
+
 	bot.Start()
 }

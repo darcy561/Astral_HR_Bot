@@ -88,15 +88,6 @@ func handleRoleChanges(e eventWorker.Event) {
 	if len(removedRoles) > 0 {
 		HandleRoleLost(s, m, removedRoles, e)
 	}
-
-	logger.Debug(logger.LogData{
-		"trace_id":  t,
-		"action":    "role_change_complete",
-		"member_id": m.User.ID,
-		"added":     addedRoles,
-		"removed":   removedRoles,
-		"message":   "handle role change complete.",
-	})
 }
 
 func hasRole(roles []string, roleID string) bool {

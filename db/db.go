@@ -9,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -332,6 +333,34 @@ func GetTrackedUsers(ctx context.Context) ([]string, error) {
 	return users, nil
 }
 
+func AddTrackedUser(ctx context.Context, userID string) error {
+	err := RedisDB.SAdd(ctx, "trackedUsers", userID).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "add tracked user to redis",
+			"message": "failed to add tracked user to redis",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	return nil
+}
+
+func RemoveTrackedUser(ctx context.Context, userID string) error {
+	err := RedisDB.SRem(ctx, "trackedUsers", userID).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "remove tracked user from redis",
+			"message": "failed to remove tracked user from redis",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	return nil
+}
+
 func IncreaseAttributeCount(ctx context.Context, key string, attribute string, amount int) error {
 
 	err := RedisDB.HIncrBy(ctx, key, attribute, int64(amount)).Err()
@@ -362,4 +391,96 @@ func DecreaseAttributeCount(ctx context.Context, key string, attribute string, a
 	}
 
 	return nil
+}
+
+func IncreaseChannelCount(ctx context.Context, userID string, channelID string) error {
+
+	err := RedisDB.ZIncrBy(ctx, "user:"+userID+":channels", 1, channelID).Err()
+
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "increase_channel_count",
+			"message": "failed to increase channel count",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	return nil
+}
+
+func DecreaseChannelCount(ctx context.Context, userID string, channelID string) error {
+
+	err := RedisDB.ZIncrBy(ctx, "user:"+userID+":channels", -1, channelID).Err()
+
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "decrease_channel_count",
+			"message": "failed to decrease channel count",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	return nil
+}
+
+func mapToStruct[T any](fields map[string]string, target *T) error {
+	v := reflect.ValueOf(target).Elem()
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		fieldName := field.Name
+		value := fields[strings.ToLower(fieldName)]
+
+		if value == "" {
+			continue
+		}
+
+		switch field.Type.Kind() {
+		case reflect.String:
+			v.Field(i).SetString(value)
+		case reflect.Int64:
+			if val, err := strconv.ParseInt(value, 10, 64); err == nil {
+				v.Field(i).SetInt(val)
+			}
+		case reflect.Int:
+			if val, err := strconv.Atoi(value); err == nil {
+				v.Field(i).SetInt(int64(val))
+			}
+		case reflect.Bool:
+			if val, err := strconv.ParseBool(value); err == nil {
+				v.Field(i).SetBool(val)
+			}
+		}
+	}
+	return nil
+}
+
+func GetUserAnalytics(ctx context.Context, userID string) (models.UserAnalytics, error) {
+	key := "user:" + userID + ":monitoring"
+	fields, err := RedisDB.HGetAll(ctx, key).Result()
+
+	logger.Debug(logger.LogData{
+		"action":  "get_user_analytics",
+		"message": "getting user analytics",
+		"user_id": userID,
+		"fields":  fields,
+	})
+
+	if err != nil {
+		return models.UserAnalytics{}, err
+	}
+
+	userAnalytics := models.UserAnalytics{
+		UserID: userID,
+	}
+
+	err = mapToStruct(fields, &userAnalytics)
+	if err != nil {
+		return models.UserAnalytics{}, err
+	}
+
+	return userAnalytics, nil
 }

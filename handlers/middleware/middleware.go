@@ -6,6 +6,7 @@ import (
 	"astralHRBot/users"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
+	"astralHRBot/workers/monitoring"
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
@@ -69,5 +70,20 @@ func CreateOrUpdateUserMiddleware(s *discordgo.Session, m *discordgo.GuildMember
 		"message":    "Passed",
 	})
 
+	return true
+}
+
+func MonitorUserActivity(s *discordgo.Session, m *discordgo.MessageCreate, e eventWorker.Event) bool {
+	monitoring.SubmitEvent(m)
+	return true
+}
+
+func MonitorVoiceJoin(s *discordgo.Session, v *discordgo.VoiceStateUpdate, e eventWorker.Event) bool {
+	monitoring.SubmitEvent(v)
+	return true
+}
+
+func MonitorInviteCreate(s *discordgo.Session, i *discordgo.InviteCreate, e eventWorker.Event) bool {
+	monitoring.SubmitEvent(i)
 	return true
 }

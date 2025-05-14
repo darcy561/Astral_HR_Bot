@@ -1,5 +1,5 @@
 package settings
 
 var (
-	DebugMode = false
+	DebugMode = true
 )

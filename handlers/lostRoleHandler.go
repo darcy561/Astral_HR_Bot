@@ -2,12 +2,15 @@ package handlers
 
 import (
 	"astralHRBot/channels"
+	"astralHRBot/db"
 	"astralHRBot/helper"
 	"astralHRBot/logger"
 	"astralHRBot/roles"
 	"astralHRBot/users"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
+	"astralHRBot/workers/monitoring"
+	"context"
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
@@ -40,6 +43,9 @@ func memberLeavesCorporation(s *discordgo.Session, m *discordgo.GuildMemberUpdat
 				return err
 			})
 		}
+
+		db.DeleteTaskFromRedis(context.Background(), "user:"+m.User.ID+":monitoring")
+		monitoring.RemoveUserTracking(m.User.ID)
 
 		discordAPIWorker.NewRequest(e, func() error {
 			logger.Debug(logger.LogData{

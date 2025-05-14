@@ -10,6 +10,7 @@ import (
 	"astralHRBot/users"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
+	"astralHRBot/workers/monitoring"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -379,13 +380,15 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 				})
 			}
 
+			monitoring.AddUserTracking(m.User.ID)
+
 			discordAPIWorker.NewRequest(e, func() error {
 				logger.Debug(logger.LogData{
 					"trace_id":  e.TraceID,
 					"action":    "task_created",
 					"member_id": m.User.ID,
 				})
-				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("Checkin task created"))
+				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("Check in task created"))
 
 				if err != nil {
 					logger.Error(logger.LogData{

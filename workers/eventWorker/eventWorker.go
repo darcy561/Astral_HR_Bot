@@ -119,7 +119,7 @@ func (wp *WorkerPool) startUserRoutine(userID string, ch chan Event) {
 				delete(wp.userChannels, userID)
 				logger.Debug(logger.LogData{
 					"action":  "cleanup",
-					"message": "Cleaned up user due to inactivity",
+					"message": "User Routine closed due to inactivity",
 					"user_id": userID,
 				})
 				wp.mu.Unlock()

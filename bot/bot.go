@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"astralHRBot/bot/identity"
 	"astralHRBot/handlers"
 	"astralHRBot/logger"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
@@ -66,6 +67,8 @@ func Start() {
 		})
 		os.Exit(1)
 	}
+
+	identity.SetupBotIdentity(Discord)
 
 	logger.Info(logger.LogData{
 		"action":  "server_startup",

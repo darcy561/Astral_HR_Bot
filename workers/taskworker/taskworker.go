@@ -10,6 +10,7 @@ import (
 	"astralHRBot/roles"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
+	"astralHRBot/workers/monitoring"
 	"context"
 	"fmt"
 	"time"
@@ -95,15 +96,17 @@ func processRecruitmentCleanup(task models.Task) {
 				err := bot.Discord.GuildMemberRoleRemove(bot.Discord.State.Guilds[0].ID, e.UserID, roles.GetRecruitRoleID())
 				if err != nil {
 					logger.Error(logger.LogData{
-						"action":  "process_recruitment_cleanup",
-						"message": "Failed to remove recruit role",
-						"error":   err.Error(),
+						"trace_id": e.TraceID,
+						"action":   "process_recruitment_cleanup",
+						"message":  "Failed to remove recruit role",
+						"error":    err.Error(),
 					})
 				}
 				logger.Debug(logger.LogData{
-					"action":  "process_recruitment_cleanup",
-					"message": "Recruit role removed",
-					"user_id": e.UserID,
+					"trace_id": e.TraceID,
+					"action":   "process_recruitment_cleanup",
+					"message":  "Recruit role removed",
+					"user_id":  e.UserID,
 				})
 				return err
 			})
@@ -116,15 +119,17 @@ func processRecruitmentCleanup(task models.Task) {
 					_, err := bot.Discord.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("No activity within the last 7 days. Flagged for removal."))
 					if err != nil {
 						logger.Error(logger.LogData{
-							"action":  "process_recruitment_cleanup",
-							"message": "Failed to send message to recruitment thread",
-							"error":   err.Error(),
+							"trace_id": e.TraceID,
+							"action":   "process_recruitment_cleanup",
+							"message":  "Failed to send message to recruitment thread",
+							"error":    err.Error(),
 						})
 					}
 					logger.Debug(logger.LogData{
-						"action":  "process_recruitment_cleanup",
-						"message": "Message sent to recruitment thread",
-						"user_id": e.UserID,
+						"trace_id": e.TraceID,
+						"action":   "process_recruitment_cleanup",
+						"message":  "Message sent to recruitment thread",
+						"user_id":  e.UserID,
 					})
 					return err
 				})
@@ -135,9 +140,10 @@ func processRecruitmentCleanup(task models.Task) {
 
 		if err != nil {
 			logger.Error(logger.LogData{
-				"action":  "process_recruitment_cleanup",
-				"message": "Failed to delete task from redis",
-				"error":   err.Error(),
+				"trace_id": e.TraceID,
+				"action":   "process_recruitment_cleanup",
+				"message":  "Failed to delete task from redis",
+				"error":    err.Error(),
 			})
 			return
 		}
@@ -162,7 +168,33 @@ func processUserCheckin(task models.Task) {
 
 	eventWorker.Submit(parms.UserID, func(e eventWorker.Event) {
 
-		// ctx := context.Background()
+		ctx := context.Background()
+
+		userAnalytics, err := db.GetUserAnalytics(ctx, e.UserID)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"trace_id": e.TraceID,
+				"action":   "process_user_checkin",
+				"message":  "Failed to get user analytics",
+				"error":    err.Error(),
+			})
+			return
+		}
+
+		fmt.Println("User analytics", userAnalytics)
+
+		err = db.DeleteTaskFromRedis(ctx, task.TaskID)
+
+		if err != nil {
+			logger.Error(logger.LogData{
+				"trace_id": e.TraceID,
+				"action":   "process_user_checkin",
+				"message":  "Failed to delete task from redis",
+				"error":    err.Error(),
+			})
+			return
+		}
+		monitoring.RemoveUserTracking(e.UserID)
 
 	})
 
