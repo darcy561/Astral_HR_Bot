@@ -9,11 +9,18 @@ import (
 )
 
 var messageCreateMiddleware = []MessageCreateMiddleware{
-	middleware.IgnoreBotMessages,
 	middleware.MonitorUserActivity,
+	middleware.IgnoreBotMessages,
 }
 
 func MessageHandlers(s *discordgo.Session, m *discordgo.MessageCreate) {
+	logger.Debug(logger.LogData{
+		"action":     "message_handler",
+		"message":    "Received message",
+		"user_id":    m.Author.ID,
+		"channel_id": m.ChannelID,
+	})
+
 	eventWorker.Submit(
 		m.Author.ID,
 		func(e eventWorker.Event) {
@@ -23,7 +30,7 @@ func MessageHandlers(s *discordgo.Session, m *discordgo.MessageCreate) {
 				logger.Error(logger.LogData{
 					"trace_id": t,
 					"action":   "invalid_args",
-					"message":  "handle role changes: invalid arguments",
+					"message":  "handle message: invalid arguments",
 				})
 				return
 			}
@@ -35,7 +42,7 @@ func MessageHandlers(s *discordgo.Session, m *discordgo.MessageCreate) {
 				logger.Error(logger.LogData{
 					"trace_id": t,
 					"action":   "type_assertion_failed",
-					"message":  "handle role changes: type assertion failed",
+					"message":  "handle message: type assertion failed",
 				})
 				return
 			}

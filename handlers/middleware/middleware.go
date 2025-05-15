@@ -74,16 +74,40 @@ func CreateOrUpdateUserMiddleware(s *discordgo.Session, m *discordgo.GuildMember
 }
 
 func MonitorUserActivity(s *discordgo.Session, m *discordgo.MessageCreate, e eventWorker.Event) bool {
+	logger.Debug(logger.LogData{
+		"action":     "monitor_user_activity",
+		"message":    "Received message event",
+		"user_id":    m.Author.ID,
+		"channel_id": m.ChannelID,
+		"trace_id":   e.TraceID,
+	})
+
 	monitoring.SubmitEvent(m)
 	return true
 }
 
 func MonitorVoiceJoin(s *discordgo.Session, v *discordgo.VoiceStateUpdate, e eventWorker.Event) bool {
+	logger.Debug(logger.LogData{
+		"action":     "monitor_voice_join",
+		"message":    "Received voice state update",
+		"user_id":    v.UserID,
+		"channel_id": v.ChannelID,
+		"trace_id":   e.TraceID,
+	})
+
 	monitoring.SubmitEvent(v)
 	return true
 }
 
 func MonitorInviteCreate(s *discordgo.Session, i *discordgo.InviteCreate, e eventWorker.Event) bool {
+	logger.Debug(logger.LogData{
+		"action":     "monitor_invite_create",
+		"message":    "Received invite create",
+		"user_id":    i.Inviter.ID,
+		"channel_id": i.ChannelID,
+		"trace_id":   e.TraceID,
+	})
+
 	monitoring.SubmitEvent(i)
 	return true
 }

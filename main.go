@@ -24,6 +24,12 @@ func main() {
 	eventWorker.NewWorkerPool()
 	taskworker.StartTaskProcessor()
 	monitoring.Start()
+	monitoring.WaitForReady()
+
+	logger.Info(logger.LogData{
+		"action":  "startup",
+		"message": "All systems initialized, starting bot...",
+	})
 
 	bot.Start()
 }

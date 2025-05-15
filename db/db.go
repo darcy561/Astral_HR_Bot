@@ -477,9 +477,27 @@ func GetUserAnalytics(ctx context.Context, userID string) (models.UserAnalytics,
 		UserID: userID,
 	}
 
-	err = mapToStruct(fields, &userAnalytics)
-	if err != nil {
-		return models.UserAnalytics{}, err
+	// Convert string values to appropriate types
+	if messages, ok := fields["messages"]; ok {
+		if val, err := strconv.ParseInt(messages, 10, 64); err == nil {
+			userAnalytics.Messages = val
+		}
+	}
+	if voiceJoins, ok := fields["voice_joins"]; ok {
+		if val, err := strconv.ParseInt(voiceJoins, 10, 64); err == nil {
+			userAnalytics.VoiceJoins = val
+		}
+	}
+	if invites, ok := fields["invites"]; ok {
+		if val, err := strconv.ParseInt(invites, 10, 64); err == nil {
+			userAnalytics.Invites = val
+		}
+	}
+
+	// Get the top channel
+	topChan, err := RedisDB.ZRevRangeWithScores(ctx, "user:"+userID+":channels", 0, 0).Result()
+	if err == nil && len(topChan) > 0 {
+		userAnalytics.TopChannelID = topChan[0].Member.(string)
 	}
 
 	return userAnalytics, nil
