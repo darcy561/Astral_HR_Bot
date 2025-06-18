@@ -380,7 +380,7 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 				})
 			}
 
-			monitoring.AddUserTracking(m.User.ID)
+			monitoring.AddUserTracking(m.User.ID, models.MonitoringScenarioNewRecruit, time.Hour*24*7)
 
 			discordAPIWorker.NewRequest(e, func() error {
 				logger.Debug(logger.LogData{

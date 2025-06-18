@@ -26,7 +26,7 @@ func handleVoiceStateUpdate(s *discordgo.Session, v *discordgo.VoiceStateUpdate)
 	})
 
 	eventWorker.Submit(v.UserID, func(e eventWorker.Event) {
-		middleware.MonitorVoiceJoin(s, v, e)
+		middleware.MonitorVoiceStateUpdate(s, v, e)
 	}, s, v)
 }
 

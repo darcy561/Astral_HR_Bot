@@ -7,12 +7,13 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 type tracker struct {
-	trackedUsers map[string]struct{}
+	trackedUsers map[string]*models.UserMonitoring
 	eventChan    chan interface{}
 	mu           sync.RWMutex
 }
@@ -21,9 +22,8 @@ var mon *tracker
 var readyChan = make(chan struct{})
 
 func Start() {
-
 	mon = &tracker{
-		trackedUsers: make(map[string]struct{}),
+		trackedUsers: make(map[string]*models.UserMonitoring),
 		eventChan:    make(chan any),
 	}
 
@@ -37,8 +37,38 @@ func Start() {
 		return
 	}
 
+	// Clean up expired monitoring on startup
 	for _, id := range users {
-		mon.trackedUsers[id] = struct{}{}
+		monitoringData, err := db.GetUserMonitoring(context.Background(), id)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"action":  "monitoring_startup",
+				"message": "Failed to get monitoring data for user",
+				"error":   err.Error(),
+				"user_id": id,
+			})
+			continue
+		}
+
+		if monitoringData == nil || monitoringData.IsExpired() {
+			logger.Info(logger.LogData{
+				"action":  "monitoring_startup",
+				"message": "Removing expired monitoring",
+				"user_id": id,
+			})
+			err := db.RemoveTrackedUser(context.Background(), id)
+			if err != nil {
+				logger.Error(logger.LogData{
+					"action":  "monitoring_startup",
+					"message": "Failed to remove expired monitoring",
+					"error":   err.Error(),
+					"user_id": id,
+				})
+			}
+			continue
+		}
+
+		mon.trackedUsers[id] = monitoringData
 	}
 
 	logger.Info(logger.LogData{
@@ -71,46 +101,30 @@ func (t *tracker) run() {
 		case *discordgo.MessageCreate:
 			t.handleMessageCreate(evt)
 		case *discordgo.VoiceStateUpdate:
-			t.handleVoiceJoin(evt)
+			t.handleVoiceState(evt)
 		case *discordgo.InviteCreate:
 			t.handleInviteCreate(evt)
 		}
 	}
 }
 
-func (t *tracker) isTracked(userID string) bool {
+func (t *tracker) isTracked(userID string, action models.MonitoringAction) bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	_, ok := t.trackedUsers[userID]
-	return ok
+	if user, exists := t.trackedUsers[userID]; exists {
+		return user.ShouldTrackAction(action)
+	}
+	return false
 }
 
 //handlers
 
 func (t *tracker) handleMessageCreate(m *discordgo.MessageCreate) {
-	if m.Author == nil {
-		logger.Debug(logger.LogData{
-			"action":  "handle_message_create",
-			"message": "Skipping message - nil author",
-		})
+	if m.Author == nil || m.Author.Bot {
 		return
 	}
 
-	if m.Author.Bot {
-		logger.Debug(logger.LogData{
-			"action":  "handle_message_create",
-			"message": "Skipping message - bot author",
-			"user_id": m.Author.ID,
-		})
-		return
-	}
-
-	if !t.isTracked(m.Author.ID) {
-		logger.Debug(logger.LogData{
-			"action":  "handle_message_create",
-			"message": "Skipping message - user not tracked",
-			"user_id": m.Author.ID,
-		})
+	if !t.isTracked(m.Author.ID, models.ActionMessageCreate) {
 		return
 	}
 
@@ -151,18 +165,53 @@ func (t *tracker) handleMessageCreate(m *discordgo.MessageCreate) {
 	})
 }
 
-func (t *tracker) handleVoiceJoin(v *discordgo.VoiceStateUpdate) {
-	if !t.isTracked(v.UserID) {
-		logger.Debug(logger.LogData{
-			"action":  "handle_voice_join",
-			"message": "Skipping voice join - user not tracked",
-			"user_id": v.UserID,
-		})
+func (t *tracker) handleMessageEdit(m *discordgo.MessageUpdate) {
+	if m.Author == nil || m.Author.Bot {
 		return
 	}
 
-	// User joined a voice channel
+	if !t.isTracked(m.Author.ID, models.ActionMessageEdit) {
+		return
+	}
+
+	key := "user:" + m.Author.ID + ":monitoring"
+	ctx := context.Background()
+
+	err := db.IncreaseAttributeCount(ctx, key, "message_edits", 1)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "increase_message_edits",
+			"message": "failed to increase message edits count",
+			"error":   err.Error(),
+		})
+	}
+}
+
+func (t *tracker) handleMessageDelete(m *discordgo.MessageDelete) {
+	if !t.isTracked(m.Author.ID, models.ActionMessageDelete) {
+		return
+	}
+
+	key := "user:" + m.Author.ID + ":monitoring"
+	ctx := context.Background()
+
+	err := db.IncreaseAttributeCount(ctx, key, "message_deletes", 1)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "increase_message_deletes",
+			"message": "failed to increase message deletes count",
+			"error":   err.Error(),
+		})
+	}
+}
+
+func (t *tracker) handleVoiceState(v *discordgo.VoiceStateUpdate) {
+	// Handle voice join
 	if v.BeforeUpdate == nil && v.ChannelID != "" {
+		if !t.isTracked(v.UserID, models.ActionVoiceJoin) {
+			return
+		}
+
 		logger.Debug(logger.LogData{
 			"action":     "handle_voice_join",
 			"message":    "User joined voice channel",
@@ -179,30 +228,88 @@ func (t *tracker) handleVoiceJoin(v *discordgo.VoiceStateUpdate) {
 				"error":   err.Error(),
 			})
 		}
+		return
+	}
+
+	// Handle voice leave
+	if v.BeforeUpdate != nil && v.ChannelID == "" {
+		if !t.isTracked(v.UserID, models.ActionVoiceLeave) {
+			return
+		}
+
+		ctx := context.Background()
+		err := db.IncreaseAttributeCount(ctx, "user:"+v.UserID+":monitoring", "voice_leaves", 1)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"action":  "increase_voice_leaves",
+				"message": "failed to increase voice leaves count",
+				"error":   err.Error(),
+			})
+		}
 	}
 }
 
 func (t *tracker) handleInviteCreate(i *discordgo.InviteCreate) {
-	if i.Inviter != nil && t.isTracked(i.Inviter.ID) {
-		key := "user:" + i.Inviter.ID + ":monitoring"
-		ctx := context.Background()
-		err := db.IncreaseAttributeCount(ctx, key, "invites", 1)
-		if err != nil {
-			logger.Error(logger.LogData{
-				"action":  "increase_invite_count",
-				"message": "failed to increase invite count",
-				"error":   err.Error(),
-			})
-		}
-		logger.Debug(logger.LogData{
-			"action":  "handle_invite_create",
-			"message": "invite created",
-			"user_id": i.Inviter.ID,
+	if i.Inviter == nil {
+		return
+	}
+
+	if !t.isTracked(i.Inviter.ID, models.ActionInviteCreate) {
+		return
+	}
+
+	key := "user:" + i.Inviter.ID + ":monitoring"
+	ctx := context.Background()
+	err := db.IncreaseAttributeCount(ctx, key, "invites", 1)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "increase_invite_count",
+			"message": "failed to increase invite count",
+			"error":   err.Error(),
+		})
+	}
+	logger.Debug(logger.LogData{
+		"action":  "handle_invite_create",
+		"message": "invite created",
+		"user_id": i.Inviter.ID,
+	})
+}
+
+func (t *tracker) handleReactionAdd(r *discordgo.MessageReactionAdd) {
+	if !t.isTracked(r.UserID, models.ActionReactionAdd) {
+		return
+	}
+
+	key := "user:" + r.UserID + ":monitoring"
+	ctx := context.Background()
+	err := db.IncreaseAttributeCount(ctx, key, "reactions_added", 1)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "increase_reactions_added",
+			"message": "failed to increase reactions added count",
+			"error":   err.Error(),
 		})
 	}
 }
 
-func AddUserTracking(userID string) {
+func (t *tracker) handleReactionRemove(r *discordgo.MessageReactionRemove) {
+	if !t.isTracked(r.UserID, models.ActionReactionRemove) {
+		return
+	}
+
+	key := "user:" + r.UserID + ":monitoring"
+	ctx := context.Background()
+	err := db.IncreaseAttributeCount(ctx, key, "reactions_removed", 1)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "increase_reactions_removed",
+			"message": "failed to increase reactions removed count",
+			"error":   err.Error(),
+		})
+	}
+}
+
+func AddUserTracking(userID string, scenario models.MonitoringScenario, duration time.Duration) {
 	if mon == nil {
 		logger.Error(logger.LogData{
 			"action":  "add_user_tracking",
@@ -215,48 +322,68 @@ func AddUserTracking(userID string) {
 	mon.mu.Lock()
 	defer mon.mu.Unlock()
 
-	if _, exists := mon.trackedUsers[userID]; exists {
-		logger.Debug(logger.LogData{
-			"action":  "add_user_tracking",
-			"message": "User already being tracked",
-			"user_id": userID,
-		})
-		return
+	userMonitoring, exists := mon.trackedUsers[userID]
+	if !exists {
+		userMonitoring = models.NewUserMonitoring(userID)
+		mon.trackedUsers[userID] = userMonitoring
 	}
 
-	mon.trackedUsers[userID] = struct{}{}
-	err := db.AddTrackedUser(context.Background(), userID)
+	userMonitoring.AddScenario(scenario)
+	userMonitoring.SetExpiration(duration)
+
+	// Save to Redis
+	err := db.SaveUserMonitoring(context.Background(), userMonitoring)
 	if err != nil {
 		logger.Error(logger.LogData{
 			"action":  "add_user_tracking",
-			"message": "failed to add user tracking",
+			"message": "failed to save user monitoring",
 			"error":   err.Error(),
 		})
 		return
 	}
 
 	logger.Info(logger.LogData{
-		"action":  "add_user_tracking",
-		"message": "Successfully added user to tracking",
-		"user_id": userID,
+		"action":   "add_user_tracking",
+		"message":  "Successfully added monitoring scenario for user",
+		"user_id":  userID,
+		"scenario": scenario,
+		"duration": duration.String(),
 	})
 }
 
-func RemoveUserTracking(userID string) {
+func RemoveUserTracking(userID string, scenario models.MonitoringScenario) {
 	if mon == nil {
 		return
 	}
 
 	mon.mu.Lock()
 	defer mon.mu.Unlock()
-	delete(mon.trackedUsers, userID)
-	err := db.RemoveTrackedUser(context.Background(), userID)
-	if err != nil {
-		logger.Error(logger.LogData{
-			"action":  "remove_user_tracking",
-			"message": "failed to remove user tracking",
-			"error":   err.Error(),
-		})
+
+	if userMonitoring, exists := mon.trackedUsers[userID]; exists {
+		userMonitoring.RemoveScenario(scenario)
+
+		// If no more scenarios, remove user completely
+		if len(userMonitoring.Scenarios) == 0 {
+			delete(mon.trackedUsers, userID)
+			err := db.RemoveTrackedUser(context.Background(), userID)
+			if err != nil {
+				logger.Error(logger.LogData{
+					"action":  "remove_user_tracking",
+					"message": "failed to remove user tracking",
+					"error":   err.Error(),
+				})
+			}
+		} else {
+			// Save updated monitoring scenarios
+			err := db.SaveUserMonitoring(context.Background(), userMonitoring)
+			if err != nil {
+				logger.Error(logger.LogData{
+					"action":  "remove_user_tracking",
+					"message": "failed to save updated monitoring scenarios",
+					"error":   err.Error(),
+				})
+			}
+		}
 	}
 }
 
@@ -271,6 +398,18 @@ func GetTrackedUsers() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+func GetUserMonitoringScenarios(userID string) []models.MonitoringScenario {
+	if mon == nil {
+		return nil
+	}
+	mon.mu.RLock()
+	defer mon.mu.RUnlock()
+	if userMonitoring, exists := mon.trackedUsers[userID]; exists {
+		return userMonitoring.GetScenarios()
+	}
+	return nil
 }
 
 func SubmitEvent(event any) {

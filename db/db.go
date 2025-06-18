@@ -502,3 +502,84 @@ func GetUserAnalytics(ctx context.Context, userID string) (models.UserAnalytics,
 
 	return userAnalytics, nil
 }
+
+func SaveUserMonitoring(ctx context.Context, monitoring *models.UserMonitoring) error {
+	key := "user:" + monitoring.UserID + ":monitoring"
+
+	// Convert monitoring data to JSON
+	data, err := json.Marshal(monitoring)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "save_user_monitoring",
+			"message": "failed to marshal monitoring data",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	err = RedisDB.Set(ctx, key, string(data), 0).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "save_user_monitoring",
+			"message": "failed to save monitoring data to redis",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	// Add to tracked users set if not already present
+	err = RedisDB.SAdd(ctx, "trackedUsers", monitoring.UserID).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "save_user_monitoring",
+			"message": "failed to add user to tracked users set",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	return nil
+}
+
+func GetUserMonitoring(ctx context.Context, userID string) (*models.UserMonitoring, error) {
+	key := "user:" + userID + ":monitoring"
+
+	data, err := RedisDB.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, nil
+		}
+		logger.Error(logger.LogData{
+			"action":  "get_user_monitoring",
+			"message": "failed to get monitoring data from redis",
+			"error":   err.Error(),
+		})
+		return nil, err
+	}
+
+	var monitoring models.UserMonitoring
+	err = json.Unmarshal([]byte(data), &monitoring)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "get_user_monitoring",
+			"message": "failed to unmarshal monitoring data",
+			"error":   err.Error(),
+		})
+		return nil, err
+	}
+
+	return &monitoring, nil
+}
+
+func SetUserPresence(ctx context.Context, key string, data string) error {
+	err := RedisDB.Set(ctx, key, data, 24*time.Hour).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "set_user_presence",
+			"message": "failed to set user presence in redis",
+			"error":   err.Error(),
+		})
+		return err
+	}
+	return nil
+}

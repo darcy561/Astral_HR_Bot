@@ -73,26 +73,48 @@ func CreateOrUpdateUserMiddleware(s *discordgo.Session, m *discordgo.GuildMember
 	return true
 }
 
-func MonitorUserActivity(s *discordgo.Session, m *discordgo.MessageCreate, e eventWorker.Event) bool {
+func MonitorMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate, e eventWorker.Event) bool {
 	logger.Debug(logger.LogData{
-		"action":     "monitor_user_activity",
-		"message":    "Received message event",
-		"user_id":    m.Author.ID,
-		"channel_id": m.ChannelID,
-		"trace_id":   e.TraceID,
+		"action":   "monitor_message_create",
+		"message":  "Received message create",
+		"user_id":  m.Author.ID,
+		"trace_id": e.TraceID,
 	})
 
 	monitoring.SubmitEvent(m)
 	return true
 }
 
-func MonitorVoiceJoin(s *discordgo.Session, v *discordgo.VoiceStateUpdate, e eventWorker.Event) bool {
+func MonitorMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate, e eventWorker.Event) bool {
 	logger.Debug(logger.LogData{
-		"action":     "monitor_voice_join",
-		"message":    "Received voice state update",
-		"user_id":    v.UserID,
-		"channel_id": v.ChannelID,
-		"trace_id":   e.TraceID,
+		"action":   "monitor_message_update",
+		"message":  "Received message update",
+		"user_id":  m.Author.ID,
+		"trace_id": e.TraceID,
+	})
+
+	monitoring.SubmitEvent(m)
+	return true
+}
+
+func MonitorMessageDelete(s *discordgo.Session, m *discordgo.MessageDelete, e eventWorker.Event) bool {
+	logger.Debug(logger.LogData{
+		"action":   "monitor_message_delete",
+		"message":  "Received message delete",
+		"user_id":  m.Author.ID,
+		"trace_id": e.TraceID,
+	})
+
+	monitoring.SubmitEvent(m)
+	return true
+}
+
+func MonitorVoiceStateUpdate(s *discordgo.Session, v *discordgo.VoiceStateUpdate, e eventWorker.Event) bool {
+	logger.Debug(logger.LogData{
+		"action":   "monitor_voice_state_update",
+		"message":  "Received voice state update",
+		"user_id":  v.UserID,
+		"trace_id": e.TraceID,
 	})
 
 	monitoring.SubmitEvent(v)
@@ -101,13 +123,36 @@ func MonitorVoiceJoin(s *discordgo.Session, v *discordgo.VoiceStateUpdate, e eve
 
 func MonitorInviteCreate(s *discordgo.Session, i *discordgo.InviteCreate, e eventWorker.Event) bool {
 	logger.Debug(logger.LogData{
-		"action":     "monitor_invite_create",
-		"message":    "Received invite create",
-		"user_id":    i.Inviter.ID,
-		"channel_id": i.ChannelID,
-		"trace_id":   e.TraceID,
+		"action":   "monitor_invite_create",
+		"message":  "Received invite create",
+		"user_id":  i.Inviter.ID,
+		"trace_id": e.TraceID,
 	})
 
 	monitoring.SubmitEvent(i)
+	return true
+}
+
+func MonitorMessageReactionAdd(s *discordgo.Session, r *discordgo.MessageReactionAdd, e eventWorker.Event) bool {
+	logger.Debug(logger.LogData{
+		"action":   "monitor_message_reaction_add",
+		"message":  "Received message reaction add",
+		"user_id":  r.UserID,
+		"trace_id": e.TraceID,
+	})
+
+	monitoring.SubmitEvent(r)
+	return true
+}
+
+func MonitorMessageReactionRemove(s *discordgo.Session, r *discordgo.MessageReactionRemove, e eventWorker.Event) bool {
+	logger.Debug(logger.LogData{
+		"action":   "monitor_message_reaction_remove",
+		"message":  "Received message reaction remove",
+		"user_id":  r.UserID,
+		"trace_id": e.TraceID,
+	})
+
+	monitoring.SubmitEvent(r)
 	return true
 }

@@ -5,6 +5,7 @@ import (
 	"astralHRBot/db"
 	"astralHRBot/helper"
 	"astralHRBot/logger"
+	"astralHRBot/models"
 	"astralHRBot/roles"
 	"astralHRBot/users"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
@@ -45,7 +46,7 @@ func memberLeavesCorporation(s *discordgo.Session, m *discordgo.GuildMemberUpdat
 		}
 
 		db.DeleteTaskFromRedis(context.Background(), "user:"+m.User.ID+":monitoring")
-		monitoring.RemoveUserTracking(m.User.ID)
+		monitoring.RemoveUserTracking(m.User.ID, models.MonitoringScenarioNewRecruit)
 
 		discordAPIWorker.NewRequest(e, func() error {
 			logger.Debug(logger.LogData{

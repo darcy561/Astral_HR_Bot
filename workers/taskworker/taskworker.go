@@ -322,6 +322,6 @@ func processUserCheckin(task models.Task) {
 			})
 			return
 		}
-		monitoring.RemoveUserTracking(e.UserID)
+		monitoring.RemoveUserTracking(e.UserID, models.MonitoringScenarioRecruitmentProcess)
 	})
 }

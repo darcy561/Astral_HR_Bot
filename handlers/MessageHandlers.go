@@ -9,7 +9,7 @@ import (
 )
 
 var messageCreateMiddleware = []MessageCreateMiddleware{
-	middleware.MonitorUserActivity,
+	middleware.MonitorMessageCreate,
 	middleware.IgnoreBotMessages,
 }
 
