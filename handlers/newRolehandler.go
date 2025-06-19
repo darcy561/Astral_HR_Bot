@@ -165,6 +165,8 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 
 		db.SaveTaskToRedis(context.Background(), newTask)
 
+		monitoring.AddScenario(m.User.ID, models.MonitoringScenarioRecruitmentProcess)
+
 		logger.Debug(logger.LogData{
 			"trace_id":  e.TraceID,
 			"action":    "process_complete",
@@ -370,6 +372,8 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 				Retries:       0,
 				CreatedBy:     "system",
 			}
+
+			monitoring.AddScenario(m.User.ID, models.MonitoringScenarioNewRecruit)
 
 			err = db.SaveTaskToRedis(context.Background(), newTask)
 			if err != nil {

@@ -14,7 +14,7 @@ import (
 
 type tracker struct {
 	trackedUsers map[string]*models.UserMonitoring
-	eventChan    chan interface{}
+	eventChan    chan any
 	mu           sync.RWMutex
 }
 
@@ -410,6 +410,70 @@ func GetUserMonitoringScenarios(userID string) []models.MonitoringScenario {
 		return userMonitoring.GetScenarios()
 	}
 	return nil
+}
+
+// GetUserMonitoringStatus returns the current monitoring status for a user
+func GetUserMonitoringStatus(userID string) (*models.UserMonitoring, error) {
+	if mon == nil {
+		return nil, fmt.Errorf("monitoring system not initialized")
+	}
+
+	mon.mu.RLock()
+	defer mon.mu.RUnlock()
+
+	if userMonitoring, exists := mon.trackedUsers[userID]; exists {
+		return userMonitoring, nil
+	}
+
+	return nil, nil
+}
+
+// IsUserMonitored checks if a user is currently being monitored
+func IsUserMonitored(userID string) bool {
+	if mon == nil {
+		return false
+	}
+
+	mon.mu.RLock()
+	defer mon.mu.RUnlock()
+
+	_, exists := mon.trackedUsers[userID]
+	return exists
+}
+
+// GetActiveMonitoringScenarios returns all active monitoring scenarios for a user
+func GetActiveMonitoringScenarios(userID string) ([]models.MonitoringScenario, error) {
+	if mon == nil {
+		return nil, fmt.Errorf("monitoring system not initialized")
+	}
+
+	mon.mu.RLock()
+	defer mon.mu.RUnlock()
+
+	if userMonitoring, exists := mon.trackedUsers[userID]; exists {
+		return userMonitoring.GetScenarios(), nil
+	}
+
+	return []models.MonitoringScenario{}, nil
+}
+
+// AddScenario adds a monitoring scenario to a user
+func AddScenario(userID string, scenario models.MonitoringScenario) {
+	if mon == nil {
+		return
+	}
+
+	mon.mu.Lock()
+	defer mon.mu.Unlock()
+
+	userMonitoring, exists := mon.trackedUsers[userID]
+	if !exists {
+		userMonitoring = models.NewUserMonitoring(userID)
+		mon.trackedUsers[userID] = userMonitoring
+	}
+
+	userMonitoring.AddScenario(scenario)
+	db.SaveUserMonitoring(context.Background(), userMonitoring)
 }
 
 func SubmitEvent(event any) {
