@@ -474,6 +474,7 @@ func AddScenario(userID string, scenario models.MonitoringScenario) {
 
 	userMonitoring.AddScenario(scenario)
 	db.SaveUserMonitoring(context.Background(), userMonitoring)
+
 }
 
 func SubmitEvent(event any) {

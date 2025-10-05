@@ -16,7 +16,6 @@ const (
 	MemberRole          = "MEMBER_ROLE_ID"
 	RecruitRole         = "RECRUIT_ROLE_ID"
 	GuestRole           = "GUEST_ROLE_ID"
-	LegacyGuestRole     = "LEGACY_GUEST_ROLE_ID"
 	AbsenteeRole        = "ABSENTEE_ROLE_ID"
 	ServerClown         = "SERVER_CLOWN_ROLE_ID"
 	BlueRole            = "BLUE_ROLE_ID"
@@ -63,10 +62,6 @@ func GetRecruitRoleID() string {
 
 func GetGuestRoleID() string {
 	return GetRoleIDFromEnv(GuestRole)
-}
-
-func GetLegacyGuestRoleID() string {
-	return GetRoleIDFromEnv(LegacyGuestRole)
 }
 
 func GetAbsenteeRoleID() string {

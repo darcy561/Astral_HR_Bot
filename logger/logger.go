@@ -1,7 +1,7 @@
 package logger
 
 import (
-	"astralHRBot/settings"
+	"astralHRBot/globals"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -80,7 +80,7 @@ func getCallerPackage() string {
 }
 
 func newLog(level logLevel, data LogData) {
-	if (level == debug || level == systemDebug) && !settings.DebugMode {
+	if (level == debug || level == systemDebug) && !globals.DebugMode {
 		return
 	}
 

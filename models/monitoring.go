@@ -47,6 +47,30 @@ var ScenarioConfig = map[MonitoringScenario][]MonitoringAction{
 	},
 }
 
+// ScenarioTaskConfig defines which task functions are associated with each scenario
+var ScenarioTaskConfig = map[MonitoringScenario][]string{
+	MonitoringScenarioNewRecruit: {
+		"ProcessUserCheckin",
+	},
+	MonitoringScenarioRecruitmentProcess: {
+		"ProcessRecruitmentCleanup",
+	},
+}
+
+// GetTaskFunctionsForScenario returns the task function names for a given scenario
+func GetTaskFunctionsForScenario(scenario MonitoringScenario) []string {
+	if functions, exists := ScenarioTaskConfig[scenario]; exists {
+		return functions
+	}
+	return []string{}
+}
+
+// TaskHandlerFunc represents a function that can handle a specific task type
+type TaskHandlerFunc func(Task)
+
+// TaskHandlers maps task types to their handler functions
+var TaskHandlers = map[TaskType]TaskHandlerFunc{}
+
 type UserAnalytics struct {
 	UserID       string
 	Messages     int64

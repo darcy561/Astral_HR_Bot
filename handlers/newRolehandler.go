@@ -3,6 +3,7 @@ package handlers
 import (
 	"astralHRBot/channels"
 	"astralHRBot/db"
+	"astralHRBot/globals"
 	"astralHRBot/helper"
 	"astralHRBot/logger"
 	"astralHRBot/models"
@@ -41,17 +42,7 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 		})
 
 		channelID := channels.GetRecruitmentChannel()
-		message := fmt.Sprintf(
-			"Welcome <@%s>! \n\n"+
-				"A member of the recruitment team will be with you shortly. In the meantime, please follow these steps:\n\n"+
-				"[Alliance Auth](https://auth.astralinc.space/)\n\n"+
-				"* Follow the above link and register your character(s).\n"+
-				"* In the **Char Link** tab, authorize each of your characters.\n"+
-				"* In the **Member Audit** tab, register each of your characters.\n"+
-				"* In the **Services** tab, click the checkbox to link your Discord account.\n\n"+
-				"Once you've completed this, a green tick should appear next to your character name on Discord.",
-			m.User.ID,
-		)
+		message := fmt.Sprintf(globals.RecruitmentWelcomeMessage, m.User.ID)
 
 		discordAPIWorker.NewRequest(e, func() error {
 			logger.Debug(logger.LogData{
@@ -157,7 +148,7 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 		newTask := models.Task{
 			FunctionName:  models.TaskRecruitmentCleanup,
 			Params:        params,
-			ScheduledTime: time.Now().Add(time.Minute * 1).Unix(),
+			ScheduledTime: time.Now().Add(time.Duration(globals.RecruitmentCleanupDelay) * time.Minute).Unix(),
 			Status:        "pending",
 			Retries:       0,
 			CreatedBy:     "system",
@@ -269,7 +260,7 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 		})
 
 		rolesToRemove := []string{
-			roles.GetNewcomerRoleID(), roles.GetRecruitRoleID(), roles.GetGuestRoleID(), roles.GetLegacyGuestRoleID(),
+			roles.GetNewcomerRoleID(), roles.GetRecruitRoleID(), roles.GetGuestRoleID(),
 		}
 
 		for _, roleID := range rolesToRemove {
@@ -298,15 +289,7 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 			})
 		}
 
-		message := fmt.Sprintf(
-			"Welcome to Astral, %s <@%s> o/ \n\n"+
-				"Please take a look at <#1229904357697261569> for guides, and specifically the newbro doc for info on our region.\n\n"+
-				"If you need a hand moving your stuff around, feel free to head over to <#1082494747937087581> to speak with them directly.\n\n"+
-				"Most importantly, head over to <#1161264045584822322> to opt out of the content pings that do not interest you.\n\n"+
-				"Clear skies,\n"+
-				"And KTF!",
-			m.Member.DisplayName(), m.User.ID,
-		)
+		message := fmt.Sprintf(globals.MemberJoinWelcomeMessage, m.Member.DisplayName(), m.User.ID)
 
 		channelID := channels.GetGeneralChannel()
 		discordAPIWorker.NewRequest(e, func() error {
@@ -384,7 +367,7 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 				})
 			}
 
-			monitoring.AddUserTracking(m.User.ID, models.MonitoringScenarioNewRecruit, time.Hour*24*7)
+			monitoring.AddUserTracking(m.User.ID, models.MonitoringScenarioNewRecruit, time.Hour*24*time.Duration(globals.NewRecruitTrackingDays))
 
 			discordAPIWorker.NewRequest(e, func() error {
 				logger.Debug(logger.LogData{

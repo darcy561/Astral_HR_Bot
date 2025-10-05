@@ -4,6 +4,7 @@ import (
 	"astralHRBot/bot"
 	"astralHRBot/db"
 	"astralHRBot/logger"
+	"astralHRBot/tasks"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
 	"astralHRBot/workers/monitoring"
@@ -19,6 +20,8 @@ func main() {
 
 	db.InitRedis()
 	bot.Setup()
+
+	tasks.RegisterHandlers()
 
 	discordAPIWorker.NewWorker(bot.Discord)
 	eventWorker.NewWorkerPool()
