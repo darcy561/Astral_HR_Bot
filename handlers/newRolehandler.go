@@ -148,7 +148,7 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 		newTask := models.Task{
 			FunctionName:  models.TaskRecruitmentCleanup,
 			Params:        params,
-			ScheduledTime: time.Now().Add(time.Duration(globals.RecruitmentCleanupDelay) * time.Minute).Unix(),
+			ScheduledTime: time.Now().Add(time.Duration(globals.RecruitmentCleanupDelay) * 24 * time.Hour).Unix(),
 			Status:        "pending",
 			Retries:       0,
 			CreatedBy:     "system",
