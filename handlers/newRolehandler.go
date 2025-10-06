@@ -350,7 +350,7 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 			newTask := models.Task{
 				FunctionName:  models.TaskUserCheckin,
 				Params:        params,
-				ScheduledTime: time.Now().Add(time.Minute * 1).Unix(),
+				ScheduledTime: time.Now().Add(time.Duration(globals.NewRecruitTrackingDays) * 24 * time.Hour).Unix(),
 				Status:        "pending",
 				Retries:       0,
 				CreatedBy:     "system",
