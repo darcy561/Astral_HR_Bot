@@ -110,6 +110,16 @@ func memberLosesBlueRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r
 }
 
 func memberLosesRecruitRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string, e eventWorker.Event) bool {
+	// Check if this role change was initiated by the bot
+	if helper.WasRoleChangeInitiatedByBot(s, m.User.ID) {
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "skip_bot_initiated_removal",
+			"member_id": m.User.ID,
+			"message":   "Skipping lostRoleHandler for bot-initiated role removal",
+		})
+		return false
+	}
 	if hasRole(r, roles.GetRecruitRoleID()) && !hasRole(m.Roles, roles.GetMemberRoleID()) {
 
 		err := users.RemoveRecruitmentDate(m.User.ID)

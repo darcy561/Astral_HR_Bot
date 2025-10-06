@@ -117,6 +117,57 @@ func (t *tracker) isTracked(userID string, action models.MonitoringAction) bool 
 	return false
 }
 
+// Helper function to update analytics for all active scenarios that track a specific action
+func (t *tracker) updateAnalyticsForAction(userID string, action models.MonitoringAction, field string, amount int) {
+	ctx := context.Background()
+
+	// Get user's active scenarios
+	userMonitoring, err := db.GetUserMonitoring(ctx, userID)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "update_analytics_for_action",
+			"message": "failed to get user monitoring data",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	if userMonitoring == nil {
+		return
+	}
+
+	// Update analytics for each active scenario that tracks this action
+	for scenario := range userMonitoring.Scenarios {
+		// Check if this scenario tracks the action
+		actions, exists := models.ScenarioConfig[scenario]
+		if !exists {
+			continue
+		}
+
+		tracksAction := false
+		for _, scenarioAction := range actions {
+			if scenarioAction == action {
+				tracksAction = true
+				break
+			}
+		}
+
+		if tracksAction {
+			key := fmt.Sprintf("user:%s:analytics:%s", userID, scenario)
+			err := db.IncreaseAttributeCount(ctx, key, field, amount)
+			if err != nil {
+				logger.Error(logger.LogData{
+					"action":   "update_analytics_for_action",
+					"message":  "failed to update analytics for scenario",
+					"error":    err.Error(),
+					"scenario": string(scenario),
+					"field":    field,
+				})
+			}
+		}
+	}
+}
+
 //handlers
 
 func (t *tracker) handleMessageCreate(m *discordgo.MessageCreate) {
@@ -128,27 +179,18 @@ func (t *tracker) handleMessageCreate(m *discordgo.MessageCreate) {
 		return
 	}
 
-	key := "user:" + m.Author.ID + ":monitoring"
 	ctx := context.Background()
 
 	logger.Debug(logger.LogData{
 		"action":  "handle_message_create",
 		"message": "Processing message for tracked user",
 		"user_id": m.Author.ID,
-		"key":     key,
 	})
 
-	err := db.IncreaseAttributeCount(ctx, key, "messages", 1)
-	if err != nil {
-		logger.Error(logger.LogData{
-			"action":  "increase_message_count",
-			"message": "failed to increase message count",
-			"error":   err.Error(),
-		})
-		return
-	}
+	// Update analytics for all scenarios that track message creation
+	t.updateAnalyticsForAction(m.Author.ID, models.ActionMessageCreate, "messages", 1)
 
-	err = db.IncreaseChannelCount(ctx, m.Author.ID, m.ChannelID)
+	err := db.IncreaseChannelCount(ctx, m.Author.ID, m.ChannelID)
 	if err != nil {
 		logger.Error(logger.LogData{
 			"action":  "increase_channel_count",
@@ -174,17 +216,8 @@ func (t *tracker) handleMessageEdit(m *discordgo.MessageUpdate) {
 		return
 	}
 
-	key := "user:" + m.Author.ID + ":monitoring"
-	ctx := context.Background()
-
-	err := db.IncreaseAttributeCount(ctx, key, "message_edits", 1)
-	if err != nil {
-		logger.Error(logger.LogData{
-			"action":  "increase_message_edits",
-			"message": "failed to increase message edits count",
-			"error":   err.Error(),
-		})
-	}
+	// Update analytics for all scenarios that track message edits
+	t.updateAnalyticsForAction(m.Author.ID, models.ActionMessageEdit, "message_edits", 1)
 }
 
 func (t *tracker) handleMessageDelete(m *discordgo.MessageDelete) {
@@ -192,17 +225,8 @@ func (t *tracker) handleMessageDelete(m *discordgo.MessageDelete) {
 		return
 	}
 
-	key := "user:" + m.Author.ID + ":monitoring"
-	ctx := context.Background()
-
-	err := db.IncreaseAttributeCount(ctx, key, "message_deletes", 1)
-	if err != nil {
-		logger.Error(logger.LogData{
-			"action":  "increase_message_deletes",
-			"message": "failed to increase message deletes count",
-			"error":   err.Error(),
-		})
-	}
+	// Update analytics for all scenarios that track message deletes
+	t.updateAnalyticsForAction(m.Author.ID, models.ActionMessageDelete, "message_deletes", 1)
 }
 
 func (t *tracker) handleVoiceState(v *discordgo.VoiceStateUpdate) {
@@ -219,15 +243,8 @@ func (t *tracker) handleVoiceState(v *discordgo.VoiceStateUpdate) {
 			"channel_id": v.ChannelID,
 		})
 
-		ctx := context.Background()
-		err := db.IncreaseAttributeCount(ctx, "user:"+v.UserID+":monitoring", "voice_joins", 1)
-		if err != nil {
-			logger.Error(logger.LogData{
-				"action":  "increase_voice_joins",
-				"message": "failed to increase voice joins count",
-				"error":   err.Error(),
-			})
-		}
+		// Update analytics for all scenarios that track voice joins
+		t.updateAnalyticsForAction(v.UserID, models.ActionVoiceJoin, "voice_joins", 1)
 		return
 	}
 
@@ -237,15 +254,8 @@ func (t *tracker) handleVoiceState(v *discordgo.VoiceStateUpdate) {
 			return
 		}
 
-		ctx := context.Background()
-		err := db.IncreaseAttributeCount(ctx, "user:"+v.UserID+":monitoring", "voice_leaves", 1)
-		if err != nil {
-			logger.Error(logger.LogData{
-				"action":  "increase_voice_leaves",
-				"message": "failed to increase voice leaves count",
-				"error":   err.Error(),
-			})
-		}
+		// Update analytics for all scenarios that track voice leaves
+		t.updateAnalyticsForAction(v.UserID, models.ActionVoiceLeave, "voice_leaves", 1)
 	}
 }
 
@@ -258,16 +268,9 @@ func (t *tracker) handleInviteCreate(i *discordgo.InviteCreate) {
 		return
 	}
 
-	key := "user:" + i.Inviter.ID + ":monitoring"
-	ctx := context.Background()
-	err := db.IncreaseAttributeCount(ctx, key, "invites", 1)
-	if err != nil {
-		logger.Error(logger.LogData{
-			"action":  "increase_invite_count",
-			"message": "failed to increase invite count",
-			"error":   err.Error(),
-		})
-	}
+	// Update analytics for all scenarios that track invite creation
+	t.updateAnalyticsForAction(i.Inviter.ID, models.ActionInviteCreate, "invites", 1)
+
 	logger.Debug(logger.LogData{
 		"action":  "handle_invite_create",
 		"message": "invite created",
@@ -280,16 +283,8 @@ func (t *tracker) handleReactionAdd(r *discordgo.MessageReactionAdd) {
 		return
 	}
 
-	key := "user:" + r.UserID + ":monitoring"
-	ctx := context.Background()
-	err := db.IncreaseAttributeCount(ctx, key, "reactions_added", 1)
-	if err != nil {
-		logger.Error(logger.LogData{
-			"action":  "increase_reactions_added",
-			"message": "failed to increase reactions added count",
-			"error":   err.Error(),
-		})
-	}
+	// Update analytics for all scenarios that track reaction adds
+	t.updateAnalyticsForAction(r.UserID, models.ActionReactionAdd, "reactions_added", 1)
 }
 
 func (t *tracker) handleReactionRemove(r *discordgo.MessageReactionRemove) {
@@ -297,16 +292,8 @@ func (t *tracker) handleReactionRemove(r *discordgo.MessageReactionRemove) {
 		return
 	}
 
-	key := "user:" + r.UserID + ":monitoring"
-	ctx := context.Background()
-	err := db.IncreaseAttributeCount(ctx, key, "reactions_removed", 1)
-	if err != nil {
-		logger.Error(logger.LogData{
-			"action":  "increase_reactions_removed",
-			"message": "failed to increase reactions removed count",
-			"error":   err.Error(),
-		})
-	}
+	// Update analytics for all scenarios that track reaction removes
+	t.updateAnalyticsForAction(r.UserID, models.ActionReactionRemove, "reactions_removed", 1)
 }
 
 func AddUserTracking(userID string, scenario models.MonitoringScenario, duration time.Duration) {

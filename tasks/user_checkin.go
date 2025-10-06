@@ -12,6 +12,7 @@ import (
 	"astralHRBot/workers/monitoring"
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -54,18 +55,55 @@ func ProcessUserCheckin(task models.Task) {
 			}
 		}
 
-		stats, err := db.GetUserAnalytics(ctx, e.UserID)
+		// Get analytics for the new_recruit scenario
+		analyticsKey := fmt.Sprintf("user:%s:analytics:new_recruit", e.UserID)
+		fields, err := db.GetRedisClient().HGetAll(ctx, analyticsKey).Result()
 		if err != nil {
 			logger.Error(logger.LogData{
 				"trace_id": e.TraceID,
 				"action":   "process_user_checkin",
-				"message":  "Failed to get user analytics",
+				"message":  "Failed to get user analytics for new_recruit scenario",
 				"error":    err.Error(),
 			})
 			return
 		}
 
-		fmt.Println("User analytics", stats)
+		// Parse analytics fields
+		messages := 0
+		voiceJoins := 0
+		invites := 0
+		topChannelID := ""
+
+		if msgStr, exists := fields["messages"]; exists {
+			if msg, err := strconv.Atoi(msgStr); err == nil {
+				messages = msg
+			}
+		}
+		if voiceStr, exists := fields["voice_joins"]; exists {
+			if voice, err := strconv.Atoi(voiceStr); err == nil {
+				voiceJoins = voice
+			}
+		}
+		if inviteStr, exists := fields["invites"]; exists {
+			if invite, err := strconv.Atoi(inviteStr); err == nil {
+				invites = invite
+			}
+		}
+		if channelID, exists := fields["top_channel_id"]; exists {
+			topChannelID = channelID
+		}
+
+		logger.Debug(logger.LogData{
+			"trace_id": e.TraceID,
+			"action":   "process_user_checkin",
+			"message":  "Retrieved new_recruit scenario analytics",
+			"analytics": map[string]interface{}{
+				"messages":       messages,
+				"voice_joins":    voiceJoins,
+				"invites":        invites,
+				"top_channel_id": topChannelID,
+			},
+		})
 
 		embededMessage := discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s's First Week Analytics", displayName),
@@ -74,22 +112,22 @@ func ProcessUserCheckin(task models.Task) {
 			Fields: []*discordgo.MessageEmbedField{
 				{
 					Name:   "📝 Messages Sent",
-					Value:  fmt.Sprintf("%d", stats.Messages),
+					Value:  fmt.Sprintf("%d", messages),
 					Inline: true,
 				},
 				{
 					Name:   "🎙️ Voice Joins",
-					Value:  fmt.Sprintf("%d", stats.VoiceJoins),
+					Value:  fmt.Sprintf("%d", voiceJoins),
 					Inline: true,
 				},
 				{
 					Name:   "📨 Invites Created",
-					Value:  fmt.Sprintf("%d", stats.Invites),
+					Value:  fmt.Sprintf("%d", invites),
 					Inline: true,
 				},
 				{
 					Name:   "📌 Most Active Channel",
-					Value:  fmt.Sprintf("<#%s>", stats.TopChannelID),
+					Value:  fmt.Sprintf("<#%s>", topChannelID),
 					Inline: false,
 				},
 			},
@@ -186,6 +224,6 @@ func ProcessUserCheckin(task models.Task) {
 			})
 			return
 		}
-		monitoring.RemoveUserTracking(e.UserID, models.MonitoringScenarioRecruitmentProcess)
+		monitoring.RemoveUserTracking(e.UserID, models.MonitoringScenarioNewRecruit)
 	})
 }

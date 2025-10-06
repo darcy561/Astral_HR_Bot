@@ -459,16 +459,9 @@ func mapToStruct[T any](fields map[string]string, target *T) error {
 }
 
 func GetUserAnalytics(ctx context.Context, userID string) (models.UserAnalytics, error) {
-	key := "user:" + userID + ":monitoring"
-	fields, err := RedisDB.HGetAll(ctx, key).Result()
-
-	logger.Debug(logger.LogData{
-		"action":  "get_user_analytics",
-		"message": "getting user analytics",
-		"user_id": userID,
-		"fields":  fields,
-	})
-
+	// Get all monitoring sessions for this user to find active scenarios
+	userSessionsKey := fmt.Sprintf("user:%s:monitoring_sessions", userID)
+	sessionKeys, err := RedisDB.SMembers(ctx, userSessionsKey).Result()
 	if err != nil {
 		return models.UserAnalytics{}, err
 	}
@@ -477,21 +470,56 @@ func GetUserAnalytics(ctx context.Context, userID string) (models.UserAnalytics,
 		UserID: userID,
 	}
 
-	// Convert string values to appropriate types
-	if messages, ok := fields["messages"]; ok {
-		if val, err := strconv.ParseInt(messages, 10, 64); err == nil {
-			userAnalytics.Messages = val
+	// Aggregate analytics from all active scenarios
+	scenarioAnalytics := make(map[string]int64) // field -> total count
+
+	for _, sessionKey := range sessionKeys {
+		// Get session data to find scenarios
+		data, err := RedisDB.Get(ctx, sessionKey).Result()
+		if err != nil {
+			if err == redis.Nil {
+				continue // Session expired
+			}
+			continue
+		}
+
+		var session models.UserMonitoring
+		err = json.Unmarshal([]byte(data), &session)
+		if err != nil {
+			continue
+		}
+
+		// Check if session is expired
+		if session.IsExpired() {
+			continue
+		}
+
+		// Get analytics for each scenario in this session
+		for scenario := range session.Scenarios {
+			scenarioKey := fmt.Sprintf("user:%s:analytics:%s", userID, scenario)
+			fields, err := RedisDB.HGetAll(ctx, scenarioKey).Result()
+			if err != nil {
+				continue
+			}
+
+			// Aggregate the fields
+			for field, value := range fields {
+				if val, err := strconv.ParseInt(value, 10, 64); err == nil {
+					scenarioAnalytics[field] += val
+				}
+			}
 		}
 	}
-	if voiceJoins, ok := fields["voice_joins"]; ok {
-		if val, err := strconv.ParseInt(voiceJoins, 10, 64); err == nil {
-			userAnalytics.VoiceJoins = val
-		}
+
+	// Map aggregated fields to UserAnalytics struct
+	if messages, ok := scenarioAnalytics["messages"]; ok {
+		userAnalytics.Messages = messages
 	}
-	if invites, ok := fields["invites"]; ok {
-		if val, err := strconv.ParseInt(invites, 10, 64); err == nil {
-			userAnalytics.Invites = val
-		}
+	if voiceJoins, ok := scenarioAnalytics["voice_joins"]; ok {
+		userAnalytics.VoiceJoins = voiceJoins
+	}
+	if invites, ok := scenarioAnalytics["invites"]; ok {
+		userAnalytics.Invites = invites
 	}
 
 	// Get the top channel
@@ -500,13 +528,73 @@ func GetUserAnalytics(ctx context.Context, userID string) (models.UserAnalytics,
 		userAnalytics.TopChannelID = topChan[0].Member.(string)
 	}
 
+	logger.Debug(logger.LogData{
+		"action":    "get_user_analytics",
+		"message":   "aggregated user analytics from scenarios",
+		"user_id":   userID,
+		"analytics": scenarioAnalytics,
+	})
+
 	return userAnalytics, nil
 }
 
-func SaveUserMonitoring(ctx context.Context, monitoring *models.UserMonitoring) error {
-	key := "user:" + monitoring.UserID + ":monitoring"
+func InitializeScenarioAnalytics(ctx context.Context, userID string, scenario models.MonitoringScenario) error {
+	key := fmt.Sprintf("user:%s:analytics:%s", userID, scenario)
 
-	// Convert monitoring data to JSON
+	// Get the actions for this scenario from the config
+	actions, exists := models.ScenarioConfig[scenario]
+	if !exists {
+		return fmt.Errorf("unknown scenario: %s", scenario)
+	}
+
+	// Initialize analytics hash with fields based on scenario actions
+	initialFields := make(map[string]interface{})
+
+	// Map actions to their corresponding counter fields
+	actionToField := map[models.MonitoringAction]string{
+		models.ActionMessageCreate:  "messages",
+		models.ActionMessageEdit:    "message_edits",
+		models.ActionMessageDelete:  "message_deletes",
+		models.ActionVoiceJoin:      "voice_joins",
+		models.ActionVoiceLeave:     "voice_leaves",
+		models.ActionInviteCreate:   "invites",
+		models.ActionReactionAdd:    "reactions_added",
+		models.ActionReactionRemove: "reactions_removed",
+	}
+
+	// Only initialize fields for actions that this scenario tracks
+	for _, action := range actions {
+		if field, exists := actionToField[action]; exists {
+			initialFields[field] = "0"
+		}
+	}
+
+	err := RedisDB.HMSet(ctx, key, initialFields).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":   "initialize_scenario_analytics",
+			"message":  "failed to initialize scenario analytics hash",
+			"error":    err.Error(),
+			"scenario": string(scenario),
+		})
+		return err
+	}
+
+	logger.Debug(logger.LogData{
+		"action":   "initialize_scenario_analytics",
+		"message":  "initialized analytics hash for scenario",
+		"user_id":  userID,
+		"scenario": string(scenario),
+		"fields":   initialFields,
+	})
+
+	return nil
+}
+
+func SaveUserMonitoring(ctx context.Context, monitoring *models.UserMonitoring) error {
+	// Store monitoring session as JSON with unique key
+	sessionKey := fmt.Sprintf("user:%s:monitoring:%d", monitoring.UserID, monitoring.StartedAt)
+
 	data, err := json.Marshal(monitoring)
 	if err != nil {
 		logger.Error(logger.LogData{
@@ -517,14 +605,40 @@ func SaveUserMonitoring(ctx context.Context, monitoring *models.UserMonitoring) 
 		return err
 	}
 
-	err = RedisDB.Set(ctx, key, string(data), 0).Err()
+	err = RedisDB.Set(ctx, sessionKey, string(data), 0).Err()
 	if err != nil {
 		logger.Error(logger.LogData{
 			"action":  "save_user_monitoring",
-			"message": "failed to save monitoring data to redis",
+			"message": "failed to save monitoring session to redis",
 			"error":   err.Error(),
 		})
 		return err
+	}
+
+	// Add session to user's monitoring sessions set
+	userSessionsKey := fmt.Sprintf("user:%s:monitoring_sessions", monitoring.UserID)
+	err = RedisDB.SAdd(ctx, userSessionsKey, sessionKey).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "save_user_monitoring",
+			"message": "failed to add session to user sessions set",
+			"error":   err.Error(),
+		})
+		return err
+	}
+
+	// Initialize analytics for each scenario
+	for scenario := range monitoring.Scenarios {
+		err = InitializeScenarioAnalytics(ctx, monitoring.UserID, scenario)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"action":   "save_user_monitoring",
+				"message":  "failed to initialize scenario analytics",
+				"error":    err.Error(),
+				"scenario": string(scenario),
+			})
+			return err
+		}
 	}
 
 	// Add to tracked users set if not already present
@@ -542,33 +656,70 @@ func SaveUserMonitoring(ctx context.Context, monitoring *models.UserMonitoring) 
 }
 
 func GetUserMonitoring(ctx context.Context, userID string) (*models.UserMonitoring, error) {
-	key := "user:" + userID + ":monitoring"
-
-	data, err := RedisDB.Get(ctx, key).Result()
+	// Get all monitoring sessions for this user
+	userSessionsKey := fmt.Sprintf("user:%s:monitoring_sessions", userID)
+	sessionKeys, err := RedisDB.SMembers(ctx, userSessionsKey).Result()
 	if err != nil {
-		if err == redis.Nil {
-			return nil, nil
+		logger.Error(logger.LogData{
+			"action":  "get_user_monitoring",
+			"message": "failed to get user monitoring sessions",
+			"error":   err.Error(),
+		})
+		return nil, err
+	}
+
+	if len(sessionKeys) == 0 {
+		return nil, nil
+	}
+
+	// For now, return the most recent session (highest timestamp)
+	// In the future, we might want to return all active sessions
+	var latestSession *models.UserMonitoring
+	var latestTimestamp int64 = 0
+
+	for _, sessionKey := range sessionKeys {
+		data, err := RedisDB.Get(ctx, sessionKey).Result()
+		if err != nil {
+			if err == redis.Nil {
+				// Session expired, remove from set
+				RedisDB.SRem(ctx, userSessionsKey, sessionKey)
+				continue
+			}
+			logger.Error(logger.LogData{
+				"action":  "get_user_monitoring",
+				"message": "failed to get monitoring session data",
+				"error":   err.Error(),
+			})
+			continue
 		}
-		logger.Error(logger.LogData{
-			"action":  "get_user_monitoring",
-			"message": "failed to get monitoring data from redis",
-			"error":   err.Error(),
-		})
-		return nil, err
+
+		var session models.UserMonitoring
+		err = json.Unmarshal([]byte(data), &session)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"action":  "get_user_monitoring",
+				"message": "failed to unmarshal monitoring session",
+				"error":   err.Error(),
+			})
+			continue
+		}
+
+		// Check if session is expired
+		if session.IsExpired() {
+			// Remove expired session
+			RedisDB.Del(ctx, sessionKey)
+			RedisDB.SRem(ctx, userSessionsKey, sessionKey)
+			continue
+		}
+
+		// Keep track of the latest session
+		if session.StartedAt > latestTimestamp {
+			latestTimestamp = session.StartedAt
+			latestSession = &session
+		}
 	}
 
-	var monitoring models.UserMonitoring
-	err = json.Unmarshal([]byte(data), &monitoring)
-	if err != nil {
-		logger.Error(logger.LogData{
-			"action":  "get_user_monitoring",
-			"message": "failed to unmarshal monitoring data",
-			"error":   err.Error(),
-		})
-		return nil, err
-	}
-
-	return &monitoring, nil
+	return latestSession, nil
 }
 
 func SetUserPresence(ctx context.Context, key string, data string) error {

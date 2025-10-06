@@ -356,7 +356,8 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 				CreatedBy:     "system",
 			}
 
-			monitoring.AddScenario(m.User.ID, models.MonitoringScenarioNewRecruit)
+			// Remove recruitment process scenario if it exists
+			monitoring.RemoveUserTracking(m.User.ID, models.MonitoringScenarioRecruitmentProcess)
 
 			err = db.SaveTaskToRedis(context.Background(), newTask)
 			if err != nil {
