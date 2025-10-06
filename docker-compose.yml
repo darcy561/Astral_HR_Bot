@@ -1,0 +1,58 @@
+services:
+  bot:
+    build: .
+    image: darcy561/astral-hr-bot
+    container_name: astral-hr-bot
+    restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - REDIS_HOST=${REDIS_HOST}
+      - GUILD_ID=${GUILD_ID}
+      # Channel IDs
+      - GENERAL_CHANNEL_ID=${GENERAL_CHANNEL_ID}
+      - LANDING_CHANNEL_ID=${LANDING_CHANNEL_ID}
+      - LEAVERS_CHANNEL_ID=${LEAVERS_CHANNEL_ID}
+      - RECRUITMENT_CHANNEL_ID=${RECRUITMENT_CHANNEL_ID}
+      - RECRUITMENT_FORUM_ID=${RECRUITMENT_FORUM_ID}
+      - RECRUITMENT_HUB_ID=${RECRUITMENT_HUB_ID}
+      - HR_CHANNEL_ID=${HR_CHANNEL_ID}
+      # Role IDs
+      - MINING_ROLE_ID=${MINING_ROLE_ID}
+      - INDUSTRY_ROLE_ID=${INDUSTRY_ROLE_ID}
+      - PVE_ROLE_ID=${PVE_ROLE_ID}
+      - PVP_ROLE_ID=${PVP_ROLE_ID}
+      - FW_ROLE_ID=${FW_ROLE_ID}
+      - MEMBER_ROLE_ID=${MEMBER_ROLE_ID}
+      - RECRUIT_ROLE_ID=${RECRUIT_ROLE_ID}
+      - GUEST_ROLE_ID=${GUEST_ROLE_ID}
+      - ABSENTEE_ROLE_ID=${ABSENTEE_ROLE_ID}
+      - SERVER_CLOWN_ROLE_ID=${SERVER_CLOWN_ROLE_ID}
+      - BLUE_ROLE_ID=${BLUE_ROLE_ID}
+      - NEWCOMER_ROLE_ID=${NEWCOMER_ROLE_ID}
+      - AUTHENTICATED_GUEST_ROLE_ID=${AUTHENTICATED_GUEST_ROLE_ID}
+      - AUTHENTICATED_MEMBER_ROLE_ID=${AUTHENTICATED_MEMBER_ROLE_ID}
+    networks:
+      - default
+    ports:
+      - "8080:8080"
+
+  redis:
+    image: redis:alpine
+    container_name: redis_db
+    restart: unless-stopped
+    networks:
+      - default
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    driver: bridge
