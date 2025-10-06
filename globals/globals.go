@@ -4,7 +4,7 @@ var (
 	// DebugMode is a boolean that determines if the debug mode is enabled
 	DebugMode = true
 	// RecruitmentCleanupDelay is the delay in minutes before the recruitment cleanup task is run
-	RecruitmentCleanupDelay = 1
+	RecruitmentCleanupDelay = 7
 	// RecruitmentWelcomeMessage is the message sent to new recruits when they join the recruitment channel
 	RecruitmentWelcomeMessage = "Welcome <@%s>! \n\n" +
 		"A member of the recruitment team will be with you shortly. In the meantime, please follow these steps:\n\n" +

@@ -16,6 +16,8 @@ const (
 	RecruitmentChannel = "RECRUITMENT_CHANNEL_ID"
 	RecruitmentForum   = "RECRUITMENT_FORUM_ID"
 	RecruitmentHub     = "RECRUITMENT_HUB_ID"
+
+	HRChannel = "HR_CHANNEL_ID"
 )
 
 // GetChannelID returns the channel ID from environment variables
@@ -51,4 +53,8 @@ func GetRecruitmentForum() string {
 
 func GetRecruitmentHub() string {
 	return GetChannelID(RecruitmentHub)
+}
+
+func GetHRChannel() string {
+	return GetChannelID(HRChannel)
 }

@@ -335,7 +335,7 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 					"thread_id": recruitmentThread.ID,
 				})
 
-				_, err := s.ChannelMessageSend(recruitmentThread.ID, "Character Joined Corp")
+				_, err := s.ChannelMessageSend(recruitmentThread.ID, "Character Joined Corporation.")
 				return err
 			})
 
@@ -368,7 +368,7 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 				})
 			}
 
-			monitoring.AddUserTracking(m.User.ID, models.MonitoringScenarioNewRecruit, time.Hour*24*time.Duration(globals.NewRecruitTrackingDays))
+			monitoring.AddUserTracking(m.User.ID, models.MonitoringScenarioNewRecruit, time.Duration(int(globals.NewRecruitTrackingDays))*24*time.Hour)
 
 			discordAPIWorker.NewRequest(e, func() error {
 				logger.Debug(logger.LogData{
@@ -376,7 +376,7 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 					"action":    "task_created",
 					"member_id": m.User.ID,
 				})
-				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("Check in task created"))
+				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("User checkin scheduled for %d days time.", int(globals.NewRecruitTrackingDays)))
 
 				if err != nil {
 					logger.Error(logger.LogData{

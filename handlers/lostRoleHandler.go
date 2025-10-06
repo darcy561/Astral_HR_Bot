@@ -70,6 +70,13 @@ func memberLeavesCorporation(s *discordgo.Session, m *discordgo.GuildMemberUpdat
 			return err
 		})
 
+		discordAPIWorker.NewRequest(e, func() error {
+
+			_, err := s.ChannelMessageSend(channels.GetHRChannel(), fmt.Sprintf("%s, has left the corporation and their discord access has been removed.", m.User.GlobalName))
+			return err
+
+		})
+
 		logger.Debug(logger.LogData{
 			"trace_id":  e.TraceID,
 			"action":    "process_complete",

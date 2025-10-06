@@ -175,11 +175,29 @@ func (t *tracker) handleMessageCreate(m *discordgo.MessageCreate) {
 		return
 	}
 
+	ctx := context.Background()
+
+	// Update channel activity for all active scenarios
+	// This ensures most active channel is tracked per scenario
+	userMonitoring, err := db.GetUserMonitoring(ctx, m.Author.ID)
+	if err == nil && userMonitoring != nil {
+		for scenario := range userMonitoring.Scenarios {
+			err := db.IncreaseChannelCount(ctx, m.Author.ID, m.ChannelID, string(scenario))
+			if err != nil {
+				logger.Error(logger.LogData{
+					"action":   "increase_channel_count",
+					"message":  "failed to increase channel count for scenario",
+					"error":    err.Error(),
+					"scenario": string(scenario),
+				})
+			}
+		}
+	}
+
+	// Only process analytics if user is being tracked for message creation
 	if !t.isTracked(m.Author.ID, models.ActionMessageCreate) {
 		return
 	}
-
-	ctx := context.Background()
 
 	logger.Debug(logger.LogData{
 		"action":  "handle_message_create",
@@ -189,15 +207,6 @@ func (t *tracker) handleMessageCreate(m *discordgo.MessageCreate) {
 
 	// Update analytics for all scenarios that track message creation
 	t.updateAnalyticsForAction(m.Author.ID, models.ActionMessageCreate, "messages", 1)
-
-	err := db.IncreaseChannelCount(ctx, m.Author.ID, m.ChannelID)
-	if err != nil {
-		logger.Error(logger.LogData{
-			"action":  "increase_channel_count",
-			"message": "failed to increase channel count",
-			"error":   err.Error(),
-		})
-	}
 
 	logger.Debug(logger.LogData{
 		"action":     "handle_message_create",
@@ -296,7 +305,7 @@ func (t *tracker) handleReactionRemove(r *discordgo.MessageReactionRemove) {
 	t.updateAnalyticsForAction(r.UserID, models.ActionReactionRemove, "reactions_removed", 1)
 }
 
-func AddUserTracking(userID string, scenario models.MonitoringScenario, duration time.Duration) {
+func AddUserTracking(userID string, scenario models.MonitoringScenario, trackingDuration time.Duration) {
 	if mon == nil {
 		logger.Error(logger.LogData{
 			"action":  "add_user_tracking",
@@ -316,7 +325,7 @@ func AddUserTracking(userID string, scenario models.MonitoringScenario, duration
 	}
 
 	userMonitoring.AddScenario(scenario)
-	userMonitoring.SetExpiration(duration)
+	userMonitoring.SetExpiration(trackingDuration)
 
 	// Save to Redis
 	err := db.SaveUserMonitoring(context.Background(), userMonitoring)
@@ -334,7 +343,7 @@ func AddUserTracking(userID string, scenario models.MonitoringScenario, duration
 		"message":  "Successfully added monitoring scenario for user",
 		"user_id":  userID,
 		"scenario": scenario,
-		"duration": duration.String(),
+		"duration": trackingDuration.String(),
 	})
 }
 

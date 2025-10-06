@@ -9,7 +9,6 @@ import (
 	"os"
 	"reflect"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -348,6 +347,7 @@ func AddTrackedUser(ctx context.Context, userID string) error {
 }
 
 func RemoveTrackedUser(ctx context.Context, userID string) error {
+	// Remove from tracked users set
 	err := RedisDB.SRem(ctx, "trackedUsers", userID).Err()
 	if err != nil {
 		logger.Error(logger.LogData{
@@ -357,6 +357,52 @@ func RemoveTrackedUser(ctx context.Context, userID string) error {
 		})
 		return err
 	}
+
+	// Clean up all user-related data
+	err = CleanupUserData(ctx, userID)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "cleanup_user_data",
+			"message": "failed to cleanup user data",
+			"error":   err.Error(),
+			"user_id": userID,
+		})
+		return err
+	}
+
+	return nil
+}
+
+func CleanupUserData(ctx context.Context, userID string) error {
+	// Clean up monitoring sessions
+	userSessionsKey := fmt.Sprintf("user:%s:monitoring_sessions", userID)
+	sessionKeys, err := RedisDB.SMembers(ctx, userSessionsKey).Result()
+	if err == nil {
+		// Delete all monitoring sessions
+		for _, sessionKey := range sessionKeys {
+			RedisDB.Del(ctx, sessionKey)
+		}
+		// Remove the sessions set
+		RedisDB.Del(ctx, userSessionsKey)
+	}
+
+	// Clean up analytics and channel activity for all scenarios
+	scenarios := []string{"new_recruit", "recruitment_process"}
+	for _, scenario := range scenarios {
+		// Clean up analytics hash
+		analyticsKey := fmt.Sprintf("user:%s:analytics:%s", userID, scenario)
+		RedisDB.Del(ctx, analyticsKey)
+
+		// Clean up channel activity sorted set
+		channelsKey := fmt.Sprintf("user:%s:channels:%s", userID, scenario)
+		RedisDB.Del(ctx, channelsKey)
+	}
+
+	logger.Debug(logger.LogData{
+		"action":  "cleanup_user_data",
+		"message": "cleaned up all user data",
+		"user_id": userID,
+	})
 
 	return nil
 }
@@ -393,9 +439,9 @@ func DecreaseAttributeCount(ctx context.Context, key string, attribute string, a
 	return nil
 }
 
-func IncreaseChannelCount(ctx context.Context, userID string, channelID string) error {
-
-	err := RedisDB.ZIncrBy(ctx, "user:"+userID+":channels", 1, channelID).Err()
+func IncreaseChannelCount(ctx context.Context, userID string, channelID string, scenario string) error {
+	channelsKey := fmt.Sprintf("user:%s:channels:%s", userID, scenario)
+	err := RedisDB.ZIncrBy(ctx, channelsKey, 1, channelID).Err()
 
 	if err != nil {
 		logger.Error(logger.LogData{
@@ -409,9 +455,9 @@ func IncreaseChannelCount(ctx context.Context, userID string, channelID string) 
 	return nil
 }
 
-func DecreaseChannelCount(ctx context.Context, userID string, channelID string) error {
-
-	err := RedisDB.ZIncrBy(ctx, "user:"+userID+":channels", -1, channelID).Err()
+func DecreaseChannelCount(ctx context.Context, userID string, channelID string, scenario string) error {
+	channelsKey := fmt.Sprintf("user:%s:channels:%s", userID, scenario)
+	err := RedisDB.ZIncrBy(ctx, channelsKey, -1, channelID).Err()
 
 	if err != nil {
 		logger.Error(logger.LogData{
@@ -422,39 +468,6 @@ func DecreaseChannelCount(ctx context.Context, userID string, channelID string) 
 		return err
 	}
 
-	return nil
-}
-
-func mapToStruct[T any](fields map[string]string, target *T) error {
-	v := reflect.ValueOf(target).Elem()
-	t := v.Type()
-
-	for i := 0; i < v.NumField(); i++ {
-		field := t.Field(i)
-		fieldName := field.Name
-		value := fields[strings.ToLower(fieldName)]
-
-		if value == "" {
-			continue
-		}
-
-		switch field.Type.Kind() {
-		case reflect.String:
-			v.Field(i).SetString(value)
-		case reflect.Int64:
-			if val, err := strconv.ParseInt(value, 10, 64); err == nil {
-				v.Field(i).SetInt(val)
-			}
-		case reflect.Int:
-			if val, err := strconv.Atoi(value); err == nil {
-				v.Field(i).SetInt(int64(val))
-			}
-		case reflect.Bool:
-			if val, err := strconv.ParseBool(value); err == nil {
-				v.Field(i).SetBool(val)
-			}
-		}
-	}
 	return nil
 }
 
@@ -522,10 +535,35 @@ func GetUserAnalytics(ctx context.Context, userID string) (models.UserAnalytics,
 		userAnalytics.Invites = invites
 	}
 
-	// Get the top channel
-	topChan, err := RedisDB.ZRevRangeWithScores(ctx, "user:"+userID+":channels", 0, 0).Result()
-	if err == nil && len(topChan) > 0 {
-		userAnalytics.TopChannelID = topChan[0].Member.(string)
+	// Get the top channel from the most active scenario
+	// For now, we'll use the first scenario found, but this could be enhanced
+	// to aggregate or choose the most relevant scenario
+	for _, sessionKey := range sessionKeys {
+		data, err := RedisDB.Get(ctx, sessionKey).Result()
+		if err != nil {
+			continue
+		}
+
+		var session models.UserMonitoring
+		err = json.Unmarshal([]byte(data), &session)
+		if err != nil {
+			continue
+		}
+
+		if session.IsExpired() {
+			continue
+		}
+
+		// Get the top channel for the first active scenario
+		for scenario := range session.Scenarios {
+			channelsKey := fmt.Sprintf("user:%s:channels:%s", userID, scenario)
+			topChan, err := RedisDB.ZRevRangeWithScores(ctx, channelsKey, 0, 0).Result()
+			if err == nil && len(topChan) > 0 {
+				userAnalytics.TopChannelID = topChan[0].Member.(string)
+				break // Use the first scenario's top channel
+			}
+		}
+		break // Only check the first valid session
 	}
 
 	logger.Debug(logger.LogData{

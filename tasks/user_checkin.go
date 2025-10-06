@@ -89,8 +89,12 @@ func ProcessUserCheckin(task models.Task) {
 				invites = invite
 			}
 		}
-		if channelID, exists := fields["top_channel_id"]; exists {
-			topChannelID = channelID
+
+		// Get the top channel from the new_recruit scenario sorted set
+		channelsKey := fmt.Sprintf("user:%s:channels:new_recruit", e.UserID)
+		topChan, err := db.GetRedisClient().ZRevRangeWithScores(ctx, channelsKey, 0, 0).Result()
+		if err == nil && len(topChan) > 0 {
+			topChannelID = topChan[0].Member.(string)
 		}
 
 		logger.Debug(logger.LogData{
@@ -126,8 +130,13 @@ func ProcessUserCheckin(task models.Task) {
 					Inline: true,
 				},
 				{
-					Name:   "📌 Most Active Channel",
-					Value:  fmt.Sprintf("<#%s>", topChannelID),
+					Name: "📌 Most Active Channel",
+					Value: func() string {
+						if topChannelID != "" {
+							return fmt.Sprintf("<#%s>", topChannelID)
+						}
+						return "No channel activity recorded"
+					}(),
 					Inline: false,
 				},
 			},
