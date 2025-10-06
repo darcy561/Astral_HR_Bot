@@ -3,6 +3,7 @@ services:
     build: .
     image: darcy561/astral-hr-bot
     container_name: astral-hr-bot
+    restart: unless-stopped
     depends_on:
       - redis
     environment:
