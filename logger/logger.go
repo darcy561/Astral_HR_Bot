@@ -39,6 +39,11 @@ func StartLogger() {
 
 func logWorker() {
 	for logMsg := range logChannel {
+		// Check debug mode at processing time with proper synchronization
+		if (logMsg.Level == debug || logMsg.Level == systemDebug) && !globals.GetDebugMode() {
+			continue
+		}
+
 		jsonData, err := json.Marshal(logMsg.Data)
 		if err != nil {
 			jsonData = []byte(fmt.Sprintf(`{"error": "Failed to marshal log data: %v"}`, err))
@@ -80,10 +85,6 @@ func getCallerPackage() string {
 }
 
 func newLog(level logLevel, data LogData) {
-	if (level == debug || level == systemDebug) && !globals.DebugMode {
-		return
-	}
-
 	traceID := "-"
 	if id, ok := data["trace_id"].(string); ok {
 		traceID = id

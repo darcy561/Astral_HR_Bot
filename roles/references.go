@@ -84,6 +84,16 @@ func GetAuthenticatedGuestRoleID() string {
 	return GetRoleIDFromEnv(AuthenticatedGuest)
 }
 
+// HasRole checks if a user has a specific role
+func HasRole(roles []string, roleID string) bool {
+	for _, role := range roles {
+		if role == roleID {
+			return true
+		}
+	}
+	return false
+}
+
 func GetAuthenticatedMemberRoleID() string {
 	return GetRoleIDFromEnv(AuthenticatedMember)
 }

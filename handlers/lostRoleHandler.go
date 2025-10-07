@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"astralHRBot/channels"
-	"astralHRBot/db"
 	"astralHRBot/helper"
 	"astralHRBot/logger"
 	"astralHRBot/models"
@@ -11,7 +10,6 @@ import (
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
 	"astralHRBot/workers/monitoring"
-	"context"
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
@@ -30,7 +28,7 @@ func HandleRoleLost(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []st
 }
 
 func memberLeavesCorporation(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string, e eventWorker.Event) bool {
-	if hasRole(r, roles.GetMemberRoleID()) {
+	if roles.HasRole(r, roles.GetMemberRoleID()) {
 		for _, roleID := range roles.ContentNotificationRoles {
 			discordAPIWorker.NewRequest(e, func() error {
 				logger.Debug(logger.LogData{
@@ -45,8 +43,7 @@ func memberLeavesCorporation(s *discordgo.Session, m *discordgo.GuildMemberUpdat
 			})
 		}
 
-		db.DeleteTaskFromRedis(context.Background(), "user:"+m.User.ID+":monitoring")
-		monitoring.RemoveUserTracking(m.User.ID, models.MonitoringScenarioNewRecruit)
+		monitoring.RemoveAllScenarios(m.User.ID)
 
 		discordAPIWorker.NewRequest(e, func() error {
 			logger.Debug(logger.LogData{
@@ -91,7 +88,7 @@ func memberLeavesCorporation(s *discordgo.Session, m *discordgo.GuildMemberUpdat
 }
 
 func memberLosesBlueRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string, e eventWorker.Event) bool {
-	if hasRole(r, roles.GetBlueRoleID()) {
+	if roles.HasRole(r, roles.GetBlueRoleID()) {
 		discordAPIWorker.NewRequest(e, func() error {
 			logger.Debug(logger.LogData{
 				"trace_id":  e.TraceID,
@@ -127,7 +124,7 @@ func memberLosesRecruitRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate
 		})
 		return false
 	}
-	if hasRole(r, roles.GetRecruitRoleID()) && !hasRole(m.Roles, roles.GetMemberRoleID()) {
+	if roles.HasRole(r, roles.GetRecruitRoleID()) && !roles.HasRole(m.Roles, roles.GetMemberRoleID()) {
 
 		err := users.RemoveRecruitmentDate(m.User.ID)
 		if err != nil {
@@ -161,6 +158,8 @@ func memberLosesRecruitRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate
 				return err
 			})
 		}
+
+		monitoring.RemoveScenario(m.User.ID, models.MonitoringScenarioRecruitmentProcess)
 
 		return true
 	}

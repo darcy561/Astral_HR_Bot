@@ -1,5 +1,7 @@
 package globals
 
+import "sync"
+
 var (
 	// DebugMode is a boolean that determines if the debug mode is enabled
 	DebugMode = true
@@ -25,3 +27,51 @@ var (
 	// NewRecruitTrackingDays is the number of days to track new recruits
 	NewRecruitTrackingDays = 7
 )
+
+var (
+	debugModeMutex               sync.RWMutex
+	recruitmentCleanupDelayMutex sync.RWMutex
+	newRecruitTrackingDaysMutex  sync.RWMutex
+)
+
+// SetDebugMode safely sets the debug mode with proper synchronization
+func SetDebugMode(enabled bool) {
+	debugModeMutex.Lock()
+	DebugMode = enabled
+	debugModeMutex.Unlock()
+}
+
+// GetDebugMode safely gets the current debug mode
+func GetDebugMode() bool {
+	debugModeMutex.RLock()
+	defer debugModeMutex.RUnlock()
+	return DebugMode
+}
+
+// SetRecruitmentCleanupDelay safely sets the recruitment cleanup delay with proper synchronization
+func SetRecruitmentCleanupDelay(days int) {
+	recruitmentCleanupDelayMutex.Lock()
+	RecruitmentCleanupDelay = days
+	recruitmentCleanupDelayMutex.Unlock()
+}
+
+// GetRecruitmentCleanupDelay safely gets the current recruitment cleanup delay
+func GetRecruitmentCleanupDelay() int {
+	recruitmentCleanupDelayMutex.RLock()
+	defer recruitmentCleanupDelayMutex.RUnlock()
+	return RecruitmentCleanupDelay
+}
+
+// SetNewRecruitTrackingDays safely sets the new recruit tracking days with proper synchronization
+func SetNewRecruitTrackingDays(days int) {
+	newRecruitTrackingDaysMutex.Lock()
+	NewRecruitTrackingDays = days
+	newRecruitTrackingDaysMutex.Unlock()
+}
+
+// GetNewRecruitTrackingDays safely gets the current new recruit tracking days
+func GetNewRecruitTrackingDays() int {
+	newRecruitTrackingDaysMutex.RLock()
+	defer newRecruitTrackingDaysMutex.RUnlock()
+	return NewRecruitTrackingDays
+}

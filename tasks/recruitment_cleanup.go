@@ -10,6 +10,7 @@ import (
 	"astralHRBot/roles"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
+	"astralHRBot/workers/monitoring"
 	"context"
 	"fmt"
 	"strconv"
@@ -237,6 +238,7 @@ func ProcessRecruitmentCleanup(task models.Task) {
 		}
 
 		err = db.DeleteTaskFromRedis(ctx, task.TaskID)
+		monitoring.RemoveScenario(e.UserID, models.MonitoringScenarioRecruitmentProcess)
 
 		if err != nil {
 			logger.Error(logger.LogData{

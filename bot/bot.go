@@ -2,6 +2,7 @@ package bot
 
 import (
 	"astralHRBot/bot/identity"
+	"astralHRBot/commands"
 	"astralHRBot/handlers"
 	"astralHRBot/logger"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
@@ -45,6 +46,7 @@ func Setup() {
 	Discord.AddHandler(handlers.MemberLeaversAndJoiners)
 	Discord.AddHandler(handlers.GuildMemberUpdateHandlers)
 	Discord.AddHandler(handlers.ManageGuildChanges)
+	Discord.AddHandler(commands.SlashCommandHandlers)
 
 	Discord.Identify.Intents = discordgo.IntentsAll
 
@@ -69,6 +71,16 @@ func Start() {
 	}
 
 	identity.SetupBotIdentity(Discord)
+
+	// Register slash commands
+	commands.RegisterAllSlashCommands()
+	if err := commands.RegisterSlashCommandsWithDiscord(Discord); err != nil {
+		logger.Error(logger.LogData{
+			"action":  "slash_command_registration_error",
+			"message": "Failed to register slash commands",
+			"error":   err.Error(),
+		})
+	}
 
 	logger.Info(logger.LogData{
 		"action":  "server_startup",

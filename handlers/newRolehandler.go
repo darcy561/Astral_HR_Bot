@@ -33,7 +33,7 @@ func HandleRoleGained(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []
 }
 
 func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string, e eventWorker.Event) bool {
-	if hasRole(a, roles.GetRecruitRoleID()) && !hasRole(m.Roles, roles.GetServerClownRoleID()) {
+	if roles.HasRole(a, roles.GetRecruitRoleID()) && !roles.HasRole(m.Roles, roles.GetServerClownRoleID()) {
 		logger.Debug(logger.LogData{
 			"trace_id":  e.TraceID,
 			"action":    "process_start",
@@ -56,7 +56,7 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 			return err
 		})
 
-		if hasRole(m.Roles, roles.GetNewcomerRoleID()) {
+		if roles.HasRole(m.Roles, roles.GetNewcomerRoleID()) {
 			discordAPIWorker.NewRequest(e, func() error {
 				logger.Debug(logger.LogData{
 					"trace_id":  e.TraceID,
@@ -148,10 +148,11 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 		newTask := models.Task{
 			FunctionName:  models.TaskRecruitmentCleanup,
 			Params:        params,
-			ScheduledTime: time.Now().Add(time.Duration(globals.RecruitmentCleanupDelay) * 24 * time.Hour).Unix(),
+			ScheduledTime: time.Now().Add(time.Duration(globals.GetRecruitmentCleanupDelay()) * 24 * time.Hour).Unix(),
 			Status:        "pending",
 			Retries:       0,
 			CreatedBy:     "system",
+			Scenario:      string(models.MonitoringScenarioRecruitmentProcess),
 		}
 
 		db.SaveTaskToRedis(context.Background(), newTask)
@@ -170,7 +171,7 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 }
 
 func recruitAuthenticated(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string, e eventWorker.Event) bool {
-	if hasRole(m.Roles, roles.GetRecruitRoleID()) && hasRole(a, roles.GetAuthenticatedGuestRoleID()) {
+	if roles.HasRole(m.Roles, roles.GetRecruitRoleID()) && roles.HasRole(a, roles.GetAuthenticatedGuestRoleID()) {
 		logger.Debug(logger.LogData{
 			"trace_id":  e.TraceID,
 			"action":    "process_start",
@@ -251,7 +252,7 @@ func recruitAuthenticated(s *discordgo.Session, m *discordgo.GuildMemberUpdate, 
 }
 
 func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string, e eventWorker.Event) bool {
-	if (hasRole(m.Roles, roles.GetRecruitRoleID()) || hasRole(m.Roles, roles.GetAuthenticatedGuestRoleID())) && hasRole(a, roles.GetAuthenticatedMemberRoleID()) {
+	if (roles.HasRole(m.Roles, roles.GetRecruitRoleID()) || roles.HasRole(m.Roles, roles.GetAuthenticatedGuestRoleID())) && roles.HasRole(a, roles.GetAuthenticatedMemberRoleID()) {
 		logger.Debug(logger.LogData{
 			"trace_id":  e.TraceID,
 			"action":    "process_start",
@@ -350,14 +351,15 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 			newTask := models.Task{
 				FunctionName:  models.TaskUserCheckin,
 				Params:        params,
-				ScheduledTime: time.Now().Add(time.Duration(globals.NewRecruitTrackingDays) * 24 * time.Hour).Unix(),
+				ScheduledTime: time.Now().Add(time.Duration(globals.GetNewRecruitTrackingDays()) * 24 * time.Hour).Unix(),
 				Status:        "pending",
 				Retries:       0,
 				CreatedBy:     "system",
+				Scenario:      string(models.MonitoringScenarioNewRecruit),
 			}
 
 			// Remove recruitment process scenario if it exists
-			monitoring.RemoveUserTracking(m.User.ID, models.MonitoringScenarioRecruitmentProcess)
+			monitoring.RemoveScenario(m.User.ID, models.MonitoringScenarioRecruitmentProcess)
 
 			err = db.SaveTaskToRedis(context.Background(), newTask)
 			if err != nil {
@@ -368,7 +370,7 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 				})
 			}
 
-			monitoring.AddUserTracking(m.User.ID, models.MonitoringScenarioNewRecruit, time.Duration(int(globals.NewRecruitTrackingDays))*24*time.Hour)
+			monitoring.AddUserTracking(m.User.ID, models.MonitoringScenarioNewRecruit, time.Duration(int(globals.GetNewRecruitTrackingDays()))*24*time.Hour)
 
 			discordAPIWorker.NewRequest(e, func() error {
 				logger.Debug(logger.LogData{
@@ -376,7 +378,7 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 					"action":    "task_created",
 					"member_id": m.User.ID,
 				})
-				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("User checkin scheduled for %d days time.", int(globals.NewRecruitTrackingDays)))
+				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("User checkin scheduled for %d days time.", int(globals.GetNewRecruitTrackingDays())))
 
 				if err != nil {
 					logger.Error(logger.LogData{

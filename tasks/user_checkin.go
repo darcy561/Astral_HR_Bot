@@ -233,6 +233,6 @@ func ProcessUserCheckin(task models.Task) {
 			})
 			return
 		}
-		monitoring.RemoveUserTracking(e.UserID, models.MonitoringScenarioNewRecruit)
+		monitoring.RemoveScenario(e.UserID, models.MonitoringScenarioNewRecruit)
 	})
 }
