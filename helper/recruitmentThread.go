@@ -6,6 +6,7 @@ import (
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
 	"fmt"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -173,7 +174,7 @@ func (rtm *RecruitmentThreadManager) ApplyTag(tagName string) error {
 	// Find the tag by name
 	tagID := ""
 	for _, tag := range rtm.channelInfo.AvailableTags {
-		if tag.Name == tagName {
+		if strings.EqualFold(tag.Name, tagName) {
 			tagID = tag.ID
 			break
 		}
@@ -228,13 +229,51 @@ func (rtm *RecruitmentThreadManager) CloseThread(tagName string) error {
 		var tagsToApply *[]string
 		if tagName != "" && rtm.channelInfo != nil {
 			tags := []string{}
+			tagFound := false
+			logger.Debug(logger.LogData{
+				"trace_id":       rtm.event.TraceID,
+				"action":         "close_thread",
+				"message":        "Looking for tag in available tags",
+				"tag_name":       tagName,
+				"available_tags": len(rtm.channelInfo.AvailableTags),
+			})
+
 			for _, tag := range rtm.channelInfo.AvailableTags {
-				if tag.Name == tagName {
+				logger.Debug(logger.LogData{
+					"trace_id":           rtm.event.TraceID,
+					"action":             "close_thread",
+					"message":            "Checking available tag",
+					"tag_name":           tagName,
+					"available_tag_name": tag.Name,
+					"available_tag_id":   tag.ID,
+				})
+				if strings.EqualFold(tag.Name, tagName) {
 					tags = append(tags, tag.ID)
+					tagFound = true
+					logger.Debug(logger.LogData{
+						"trace_id": rtm.event.TraceID,
+						"action":   "close_thread",
+						"message":  "Found matching tag",
+						"tag_name": tagName,
+						"tag_id":   tag.ID,
+					})
 					break
 				}
 			}
-			tagsToApply = &tags
+
+			if !tagFound {
+				logger.Warn(logger.LogData{
+					"trace_id":       rtm.event.TraceID,
+					"action":         "close_thread",
+					"message":        "Tag not found in available tags",
+					"tag_name":       tagName,
+					"available_tags": len(rtm.channelInfo.AvailableTags),
+				})
+				// Don't apply any tags if the specified tag wasn't found
+				tagsToApply = nil
+			} else {
+				tagsToApply = &tags
+			}
 		}
 
 		// Close the thread
@@ -297,7 +336,7 @@ func (rtm *RecruitmentThreadManager) RemoveTags(tagName string) error {
 			// Find the tag ID to remove
 			tagIDToRemove := ""
 			for _, tag := range rtm.channelInfo.AvailableTags {
-				if tag.Name == tagName {
+				if strings.EqualFold(tag.Name, tagName) {
 					tagIDToRemove = tag.ID
 					break
 				}
@@ -504,11 +543,38 @@ func (rtm *RecruitmentThreadManager) SendMessageAndClose(message, tagName string
 		return nil
 	}
 
+	logger.Debug(logger.LogData{
+		"trace_id":     rtm.event.TraceID,
+		"action":       "send_message_and_close",
+		"message":      "Starting send message and close operation",
+		"thread_id":    rtm.thread.ID,
+		"user_message": message,
+		"tag_name":     tagName,
+	})
+
 	// Send message first
 	if message != "" {
 		rtm.SendMessage(message)
 	}
 
 	// Then close with tag
-	return rtm.CloseThread(tagName)
+	err := rtm.CloseThread(tagName)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"trace_id": rtm.event.TraceID,
+			"action":   "send_message_and_close",
+			"message":  "Failed to close thread with tag",
+			"error":    err.Error(),
+			"tag_name": tagName,
+		})
+	} else {
+		logger.Debug(logger.LogData{
+			"trace_id": rtm.event.TraceID,
+			"action":   "send_message_and_close",
+			"message":  "Successfully completed send message and close operation",
+			"tag_name": tagName,
+		})
+	}
+
+	return err
 }

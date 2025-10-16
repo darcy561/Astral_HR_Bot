@@ -13,7 +13,6 @@ import (
 	"astralHRBot/workers/eventWorker"
 	"astralHRBot/workers/monitoring"
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -95,27 +94,33 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 			})
 		}
 
-		params, err := json.Marshal(models.RecruitmentCleanupParams{UserID: m.User.ID})
+		params := &models.RecruitmentCleanupParams{UserID: m.User.ID}
+		scheduledTime := time.Now().Add(time.Duration(globals.GetRecruitmentCleanupDelay()) * 24 * time.Hour).Unix()
+
+		newTask, err := models.NewTaskWithScenario(
+			models.TaskRecruitmentCleanup,
+			params,
+			scheduledTime,
+			string(models.MonitoringScenarioRecruitmentProcess),
+		)
 		if err != nil {
 			logger.Error(logger.LogData{
 				"trace_id": e.TraceID,
-				"action":   "marshal_params",
+				"action":   "create_task",
 				"error":    err.Error(),
 			})
 			return true
 		}
 
-		newTask := models.Task{
-			FunctionName:  models.TaskRecruitmentCleanup,
-			Params:        params,
-			ScheduledTime: time.Now().Add(time.Duration(globals.GetRecruitmentCleanupDelay()) * 24 * time.Hour).Unix(),
-			Status:        "pending",
-			Retries:       0,
-			CreatedBy:     "system",
-			Scenario:      string(models.MonitoringScenarioRecruitmentProcess),
+		err = db.SaveTaskToRedis(context.Background(), *newTask)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"trace_id": e.TraceID,
+				"action":   "save_task_to_redis",
+				"error":    err.Error(),
+			})
+			return true
 		}
-
-		db.SaveTaskToRedis(context.Background(), newTask)
 
 		monitoring.AddScenario(m.User.ID, models.MonitoringScenarioRecruitmentProcess)
 
@@ -236,34 +241,33 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 		if rtm.HasThread() {
 			rtm.SendMessage("Character Joined Corporation.")
 
-			params, err := json.Marshal(models.UserCheckinParams{UserID: m.User.ID})
+			params := &models.UserCheckinParams{UserID: m.User.ID}
+			scheduledTime := time.Now().Add(time.Duration(globals.GetNewRecruitTrackingDays()) * 24 * time.Hour).Unix()
+
+			newTask, err := models.NewTaskWithScenario(
+				models.TaskUserCheckin,
+				params,
+				scheduledTime,
+				string(models.MonitoringScenarioNewRecruit),
+			)
 			if err != nil {
 				logger.Error(logger.LogData{
 					"trace_id": e.TraceID,
-					"action":   "marshal_params",
+					"action":   "create_task",
 					"error":    err.Error(),
 				})
-			}
-			newTask := models.Task{
-				FunctionName:  models.TaskUserCheckin,
-				Params:        params,
-				ScheduledTime: time.Now().Add(time.Duration(globals.GetNewRecruitTrackingDays()) * 24 * time.Hour).Unix(),
-				Status:        "pending",
-				Retries:       0,
-				CreatedBy:     "system",
-				Scenario:      string(models.MonitoringScenarioNewRecruit),
-			}
+			} else {
+				// Remove recruitment process scenario if it exists
+				monitoring.RemoveScenario(m.User.ID, models.MonitoringScenarioRecruitmentProcess)
 
-			// Remove recruitment process scenario if it exists
-			monitoring.RemoveScenario(m.User.ID, models.MonitoringScenarioRecruitmentProcess)
-
-			err = db.SaveTaskToRedis(context.Background(), newTask)
-			if err != nil {
-				logger.Error(logger.LogData{
-					"trace_id": e.TraceID,
-					"action":   "save_task_to_redis",
-					"error":    err.Error(),
-				})
+				err = db.SaveTaskToRedis(context.Background(), *newTask)
+				if err != nil {
+					logger.Error(logger.LogData{
+						"trace_id": e.TraceID,
+						"action":   "save_task_to_redis",
+						"error":    err.Error(),
+					})
+				}
 			}
 
 			monitoring.AddUserTracking(m.User.ID, models.MonitoringScenarioNewRecruit, time.Duration(int(globals.GetNewRecruitTrackingDays()))*24*time.Hour)

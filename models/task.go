@@ -89,8 +89,12 @@ func NewTaskWithScenario(functionName TaskType, params TaskParams, scheduledTime
 		return nil, fmt.Errorf("failed to marshal parameters: %w", err)
 	}
 
-	// Generate task ID (you might want to use a UUID library for this)
-	taskID := fmt.Sprintf("%s_%d", functionName, scheduledTime)
+	// Generate task ID with user ID to ensure uniqueness
+	var userID string
+	if userParams, ok := params.(UserTaskParams); ok {
+		userID = userParams.GetUserID()
+	}
+	taskID := fmt.Sprintf("%s_%s_%d", functionName, userID, scheduledTime)
 
 	return &Task{
 		TaskID:        taskID,

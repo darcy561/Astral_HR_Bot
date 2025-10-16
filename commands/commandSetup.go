@@ -17,6 +17,13 @@ var commandDefinitions = []struct {
 	{GetToggleDebugCommandDefinition(), ToggleDebugCommand},
 	{GetSetRecruitmentCleanupDelayCommandDefinition(), SetRecruitmentCleanupDelayCommand},
 	{GetSetNewRecruitTrackingDaysCommandDefinition(), SetNewRecruitTrackingDaysCommand},
+	{GetUserStatusCommandDefinition(), UserStatusCommand},
+	{GetRebuildUserEventsCommandDefinition(), RebuildUserEventsCommand},
+	{GetRebuildAllUserEventsCommandDefinition(), RebuildAllUserEventsCommand},
+	{GetMonitoringStatusCommandDefinition(), MonitoringStatusCommand},
+	{GetRebuildNewRecruitScenariosCommandDefinition(), RebuildNewRecruitScenariosCommand},
+	{GetRebuildRecruitmentProcessScenariosCommandDefinition(), RebuildRecruitmentProcessScenariosCommand},
+	{GetRebuildAnalyticsCommandDefinition(), RebuildAnalyticsCommand},
 	// Add more commands here as you create them
 	// {GetAnotherCommandDefinition(), AnotherCommand},
 }

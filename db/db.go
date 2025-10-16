@@ -236,6 +236,38 @@ func FetchLatestTasks(ctx context.Context) ([]models.Task, error) {
 	return tasks, nil
 }
 
+func FetchAllTasks(ctx context.Context) ([]models.Task, error) {
+	taskQueue := "taskQueue"
+
+	// Get all task IDs from the queue (no time restriction)
+	taskIDs, err := RedisDB.ZRange(ctx, taskQueue, 0, -1).Result()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "fetch_all_tasks",
+			"message": "Failed to fetch all tasks",
+			"error":   err.Error(),
+		})
+		return nil, err
+	}
+
+	tasks := make([]models.Task, len(taskIDs))
+
+	for i, taskID := range taskIDs {
+		task, err := getTaskByID(ctx, taskID)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"action":  "fetch_all_tasks",
+				"message": "Failed to get task by ID",
+				"error":   err.Error(),
+			})
+			return nil, err
+		}
+		tasks[i] = task
+	}
+
+	return tasks, nil
+}
+
 func getTaskByID(ctx context.Context, taskID string) (models.Task, error) {
 	data, err := RedisDB.Get(ctx, "task:"+taskID).Result()
 	if err != nil {
@@ -312,6 +344,44 @@ func DeleteTaskFromRedis(ctx context.Context, taskID string) error {
 		})
 		return err
 	}
+
+	return nil
+}
+
+func UpdateUserAnalytics(ctx context.Context, userID, scenario string, messages, voiceJoins, invites int64, topChannelID string) error {
+	key := fmt.Sprintf("user:%s:analytics:%s", userID, scenario)
+
+	// Update analytics fields
+	fields := map[string]interface{}{
+		"messages":    messages,
+		"voice_joins": voiceJoins,
+		"invites":     invites,
+		"top_channel": topChannelID,
+	}
+
+	// Update the analytics hash
+	err := RedisDB.HMSet(ctx, key, fields).Err()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":   "update_user_analytics",
+			"message":  "Failed to update user analytics",
+			"error":    err.Error(),
+			"user_id":  userID,
+			"scenario": scenario,
+		})
+		return err
+	}
+
+	logger.Debug(logger.LogData{
+		"action":      "update_user_analytics",
+		"message":     "Updated user analytics",
+		"user_id":     userID,
+		"scenario":    scenario,
+		"messages":    messages,
+		"voice_joins": voiceJoins,
+		"invites":     invites,
+		"top_channel": topChannelID,
+	})
 
 	return nil
 }
@@ -771,4 +841,35 @@ func SetUserPresence(ctx context.Context, key string, data string) error {
 		return err
 	}
 	return nil
+}
+
+func GetTasksForUser(ctx context.Context, userID string) ([]models.Task, error) {
+	// Get all tasks from the queue (including future tasks)
+	allTasks, err := FetchAllTasks(ctx)
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "get_tasks_for_user",
+			"message": "failed to fetch tasks",
+			"error":   err.Error(),
+			"user_id": userID,
+		})
+		return nil, fmt.Errorf("failed to fetch tasks: %w", err)
+	}
+
+	// Filter tasks for the specific user
+	var userTasks []models.Task
+	for _, task := range allTasks {
+		if task.IsForUser(userID) {
+			userTasks = append(userTasks, task)
+		}
+	}
+
+	logger.Debug(logger.LogData{
+		"action":     "get_tasks_for_user",
+		"message":    "retrieved tasks for user",
+		"user_id":    userID,
+		"task_count": len(userTasks),
+	})
+
+	return userTasks, nil
 }

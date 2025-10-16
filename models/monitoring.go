@@ -123,6 +123,14 @@ func (um *UserMonitoring) SetExpiration(duration time.Duration) {
 	}
 }
 
+func (um *UserMonitoring) SetStartTime(startTime time.Time) {
+	um.StartedAt = startTime.Unix()
+}
+
+func (um *UserMonitoring) SetExpiry(expiryTime time.Time) {
+	um.ExpiresAt = expiryTime.Unix()
+}
+
 func (um *UserMonitoring) IsExpired() bool {
 	if um.ExpiresAt == 0 {
 		return false
