@@ -24,6 +24,12 @@ type TaskParams interface {
 	Validate() error
 }
 
+// UserTaskParams is an interface for task parameters that include a user ID
+type UserTaskParams interface {
+	TaskParams
+	GetUserID() string
+}
+
 // Task represents a scheduled task in the system
 type Task struct {
 	TaskID        string          `json:"task_id"`
@@ -33,6 +39,7 @@ type Task struct {
 	Status        string          `json:"status"`
 	Retries       int             `json:"retries"`
 	CreatedBy     string          `json:"created_by"`
+	Scenario      string          `json:"scenario,omitempty"` // Optional scenario that created this task
 }
 
 // GetParams unmarshals the raw params into the appropriate struct type
@@ -50,6 +57,57 @@ func (t *Task) GetParams() (TaskParams, error) {
 	return params, nil
 }
 
+// IsForUser checks if this task is for a specific user
+func (t *Task) IsForUser(userID string) bool {
+	params, err := t.GetParams()
+	if err != nil {
+		return false
+	}
+
+	if userParams, ok := params.(UserTaskParams); ok {
+		return userParams.GetUserID() == userID
+	}
+
+	return false
+}
+
+// IsForScenario checks if this task was created by a specific scenario
+func (t *Task) IsForScenario(scenario string) bool {
+	return t.Scenario == scenario
+}
+
+// NewTaskWithScenario creates a new task with scenario information
+func NewTaskWithScenario(functionName TaskType, params TaskParams, scheduledTime int64, scenario string) (*Task, error) {
+	// Validate parameters
+	if err := params.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid parameters: %w", err)
+	}
+
+	// Marshal parameters to JSON
+	paramsJSON, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal parameters: %w", err)
+	}
+
+	// Generate task ID with user ID to ensure uniqueness
+	var userID string
+	if userParams, ok := params.(UserTaskParams); ok {
+		userID = userParams.GetUserID()
+	}
+	taskID := fmt.Sprintf("%s_%s_%d", functionName, userID, scheduledTime)
+
+	return &Task{
+		TaskID:        taskID,
+		FunctionName:  functionName,
+		Params:        paramsJSON,
+		ScheduledTime: scheduledTime,
+		Status:        "pending",
+		Retries:       0,
+		CreatedBy:     "system",
+		Scenario:      scenario,
+	}, nil
+}
+
 type RecruitmentCleanupParams struct {
 	UserID string `json:"user_id"`
 }
@@ -61,6 +119,10 @@ func (p *RecruitmentCleanupParams) Validate() error {
 	return nil
 }
 
+func (p *RecruitmentCleanupParams) GetUserID() string {
+	return p.UserID
+}
+
 type UserCheckinParams struct {
 	UserID string `json:"user_id"`
 }
@@ -70,4 +132,8 @@ func (p *UserCheckinParams) Validate() error {
 		return fmt.Errorf("user_id is required")
 	}
 	return nil
+}
+
+func (p *UserCheckinParams) GetUserID() string {
+	return p.UserID
 }

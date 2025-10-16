@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"astralHRBot/logger"
+	"astralHRBot/roles"
 	"astralHRBot/workers/eventWorker"
-	"slices"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -69,14 +69,14 @@ func handleRoleChanges(e eventWorker.Event) {
 
 	addedRoles := []string{}
 	for _, newRole := range newRoles {
-		if !hasRole(oldRoles, newRole) {
+		if !roles.HasRole(oldRoles, newRole) {
 			addedRoles = append(addedRoles, newRole)
 		}
 	}
 
 	removedRoles := []string{}
 	for _, oldRole := range oldRoles {
-		if !hasRole(newRoles, oldRole) {
+		if !roles.HasRole(newRoles, oldRole) {
 			removedRoles = append(removedRoles, oldRole)
 		}
 	}
@@ -88,8 +88,4 @@ func handleRoleChanges(e eventWorker.Event) {
 	if len(removedRoles) > 0 {
 		HandleRoleLost(s, m, removedRoles, e)
 	}
-}
-
-func hasRole(roles []string, roleID string) bool {
-	return slices.Contains(roles, roleID)
 }
