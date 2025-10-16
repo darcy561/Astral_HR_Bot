@@ -30,6 +30,9 @@ func HandleRoleGained(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []
 	if newMemberOnboarding(s, m, a, e) {
 		return
 	}
+	if memberRecievesGuestRole(s, m, a, e) {
+		return
+	}
 }
 
 func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string, e eventWorker.Event) bool {
@@ -70,57 +73,14 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 			})
 		}
 
-		recruitmentChannelID := channels.GetRecruitmentForum()
-		recruitmentThread, found := helper.FindForumThreadByTitle(s, recruitmentChannelID, m.User.ID)
+		rtm := helper.NewRecruitmentThreadManager(s, e, m.User.ID)
 
-		if !found {
-			discordAPIWorker.NewRequest(e, func() error {
-				newThreadTitle := fmt.Sprintf("%s - %s", m.User.GlobalName, m.User.ID)
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "thread_created",
-					"member_id": m.User.ID,
-					"title":     newThreadTitle,
-				})
-
-				_, err := s.ForumThreadStart(recruitmentChannelID, newThreadTitle, 10080, fmt.Sprintf("%s Joined Recruitment", m.User.GlobalName))
-				if err != nil {
-					return err
-				}
-				return nil
-			})
-
+		if !rtm.HasThread() {
+			rtm.CreateThread(m.User.GlobalName, m.User.ID)
 		} else {
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "thread_reopened",
-					"member_id": m.User.ID,
-					"thread_id": recruitmentThread.ID,
-				})
-
-				_, err := s.ChannelEditComplex(recruitmentThread.ID, &discordgo.ChannelEdit{
-					AutoArchiveDuration: 0,
-				})
-				if err != nil {
-					return err
-				}
-				return nil
-			})
-
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "thread_message_added",
-					"member_id": m.User.ID,
-					"thread_id": recruitmentThread.ID,
-				})
-				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("%s Rejoined Recruitment", m.User.GlobalName))
-				if err != nil {
-					return err
-				}
-				return nil
-			})
+			rtm.ReopenThread()
+			rtm.SendMessage(fmt.Sprintf("%s Rejoined Recruitment", m.User.GlobalName))
+			rtm.RemoveTags("")
 		}
 
 		// Update recruitment date in Redis
@@ -194,44 +154,11 @@ func recruitAuthenticated(s *discordgo.Session, m *discordgo.GuildMemberUpdate, 
 			return nil
 		})
 
-		recruitmentChannelID := channels.GetRecruitmentForum()
-		recruitmentThread, found := helper.FindForumThreadByTitle(s, recruitmentChannelID, m.User.ID)
-		if found {
+		rtm := helper.NewRecruitmentThreadManager(s, e, m.User.ID)
+		if rtm.HasThread() {
 			updatedThreadTitle := fmt.Sprintf("%s - %s", m.Member.DisplayName(), m.User.ID)
-
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "thread_updated",
-					"member_id": m.User.ID,
-					"thread_id": recruitmentThread.ID,
-					"new_title": updatedThreadTitle,
-				})
-
-				_, err := s.ChannelEditComplex(recruitmentThread.ID, &discordgo.ChannelEdit{
-					Name: updatedThreadTitle,
-				})
-				if err != nil {
-					return err
-				}
-				return nil
-			})
-
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "thread_message_added",
-					"member_id": m.User.ID,
-					"thread_id": recruitmentThread.ID,
-				})
-
-				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("%s Authentication Steps Complete.", m.Member.DisplayName()))
-				if err != nil {
-					return err
-				}
-				return nil
-			})
-
+			rtm.UpdateThreadTitle(updatedThreadTitle)
+			rtm.SendMessage(fmt.Sprintf("%s Authentication Steps Complete.", m.Member.DisplayName()))
 		} else {
 			logger.Info(logger.LogData{
 				"trace_id":  e.TraceID,
@@ -304,41 +231,10 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 			return err
 		})
 
-		recruitmentChannelID := channels.GetRecruitmentForum()
-		recruitmentChannel, err := s.Channel(recruitmentChannelID)
-		if err != nil {
-			logger.Warn(logger.LogData{
-				"trace_id":  e.TraceID,
-				"action":    "channel_fetch_failed",
-				"member_id": m.User.ID,
-				"error":     err.Error(),
-			})
-		}
+		rtm := helper.NewRecruitmentThreadManager(s, e, m.User.ID)
 
-		recruitmentThread, found := helper.FindForumThreadByTitle(s, recruitmentChannelID, m.User.ID)
-
-		tagsToApply := []string{}
-		if recruitmentChannel != nil {
-			for _, tag := range recruitmentChannel.AvailableTags {
-				if tag.Name == "Accepted" {
-					tagsToApply = append(tagsToApply, tag.ID)
-					break
-				}
-			}
-		}
-
-		if found {
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "thread_message_added",
-					"member_id": m.User.ID,
-					"thread_id": recruitmentThread.ID,
-				})
-
-				_, err := s.ChannelMessageSend(recruitmentThread.ID, "Character Joined Corporation.")
-				return err
-			})
+		if rtm.HasThread() {
+			rtm.SendMessage("Character Joined Corporation.")
 
 			params, err := json.Marshal(models.UserCheckinParams{UserID: m.User.ID})
 			if err != nil {
@@ -372,48 +268,8 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 
 			monitoring.AddUserTracking(m.User.ID, models.MonitoringScenarioNewRecruit, time.Duration(int(globals.GetNewRecruitTrackingDays()))*24*time.Hour)
 
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "task_created",
-					"member_id": m.User.ID,
-				})
-				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("User checkin scheduled for %d days time.", int(globals.GetNewRecruitTrackingDays())))
-
-				if err != nil {
-					logger.Error(logger.LogData{
-						"trace_id": e.TraceID,
-						"action":   "send_message",
-						"error":    err.Error(),
-					})
-					return err
-				}
-				return nil
-			})
-
-			isArchived := true
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "thread_modified",
-					"member_id": m.User.ID,
-					"thread_id": recruitmentThread.ID,
-					"archived":  true,
-				})
-				_, err := s.ChannelEditComplex(recruitmentThread.ID, &discordgo.ChannelEdit{
-					Archived:    &isArchived,
-					AppliedTags: &tagsToApply,
-				})
-				if err != nil {
-					logger.Error(logger.LogData{
-						"trace_id": e.TraceID,
-						"action":   "edit_thread",
-						"error":    err.Error(),
-					})
-					return err
-				}
-				return nil
-			})
+			rtm.SendMessage(fmt.Sprintf("User checkin scheduled for %d days time.", int(globals.GetNewRecruitTrackingDays())))
+			rtm.CloseThread("Accepted")
 		}
 
 		logger.Debug(logger.LogData{
@@ -421,6 +277,30 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 			"action":    "process_complete",
 			"process":   "new_member_onboarding",
 			"member_id": m.User.ID,
+		})
+		return true
+	}
+	return false
+}
+
+func memberRecievesGuestRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a []string, e eventWorker.Event) bool {
+	if roles.HasRole(a, roles.GetGuestRoleID()) {
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "process_start",
+			"process":   "member_recieves_guest_role",
+			"member_id": m.User.ID,
+		})
+		discordAPIWorker.NewRequest(e, func() error {
+			logger.Debug(logger.LogData{
+				"trace_id":  e.TraceID,
+				"action":    "role_removed",
+				"member_id": m.User.ID,
+				"role":      "newcomer",
+			})
+
+			err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetNewcomerRoleID())
+			return err
 		})
 		return true
 	}

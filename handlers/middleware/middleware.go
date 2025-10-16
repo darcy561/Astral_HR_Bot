@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"astralHRBot/channels"
+	"astralHRBot/helper"
 	"astralHRBot/logger"
 	"astralHRBot/users"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
@@ -18,7 +19,8 @@ func IgnoreBotMessages(discord *discordgo.Session, message *discordgo.MessageCre
 
 func SendMessageOnMemberJoin(s *discordgo.Session, m *discordgo.GuildMemberAdd, e eventWorker.Event) bool {
 	channelID := channels.GetLandingChannel()
-	message := fmt.Sprintf("%s Joined The Server.", m.User.GlobalName)
+	userName := helper.GetDisplayName(m.User)
+	message := fmt.Sprintf("%s Joined The Server.", userName)
 
 	discordAPIWorker.NewRequest(e, func() error {
 		_, err := s.ChannelMessageSend(channelID, message)
@@ -38,7 +40,8 @@ func SendMessageOnMemberJoin(s *discordgo.Session, m *discordgo.GuildMemberAdd, 
 
 func SendMessageOnMemberLeave(s *discordgo.Session, m *discordgo.GuildMemberRemove, e eventWorker.Event) bool {
 	channelID := channels.GetLeaversChannel()
-	message := fmt.Sprintf("%s Left The Server.", m.User.GlobalName)
+	userName := helper.GetDisplayName(m.User)
+	message := fmt.Sprintf("%s Left The Server.", userName)
 
 	discordAPIWorker.NewRequest(e, func() error {
 		_, err := s.ChannelMessageSend(channelID, message)

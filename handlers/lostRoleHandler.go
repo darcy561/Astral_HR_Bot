@@ -143,21 +143,8 @@ func memberLosesRecruitRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate
 			"message":   "Member Loses Recruit Role Complete",
 		})
 
-		recruitmentChannelID := channels.GetRecruitmentForum()
-		recruitmentThread, found := helper.FindForumThreadByTitle(s, recruitmentChannelID, m.User.ID)
-
-		if found {
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "thread_message_added",
-					"member_id": m.User.ID,
-					"thread_id": recruitmentThread.ID,
-				})
-				_, err := s.ChannelMessageSend(recruitmentThread.ID, fmt.Sprintf("%s has left the recruitment channel.", m.User.GlobalName))
-				return err
-			})
-		}
+		rtm := helper.NewRecruitmentThreadManager(s, e, m.User.ID)
+		rtm.SendMessage(fmt.Sprintf("%s has left the recruitment channel.", m.User.GlobalName))
 
 		monitoring.RemoveScenario(m.User.ID, models.MonitoringScenarioRecruitmentProcess)
 

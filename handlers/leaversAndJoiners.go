@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"astralHRBot/handlers/middleware"
+	"astralHRBot/helper"
 	"astralHRBot/logger"
 	"astralHRBot/workers/eventWorker"
+	"astralHRBot/workers/monitoring"
+	"fmt"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -84,4 +87,12 @@ func memberLeavingSererHandlers(e eventWorker.Event) {
 			return
 		}
 	}
+
+	//close a recruitment thread if its open and assign the "Left Server" tag
+	rtm := helper.NewRecruitmentThreadManager(s, e, m.User.ID)
+	rtm.SendMessageAndClose(fmt.Sprintf("%s left the server.", m.User.GlobalName), "Left Server")
+
+	//clear any monitoring or events for the user
+	monitoring.RemoveAllScenarios(m.User.ID)
+
 }

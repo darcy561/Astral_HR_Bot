@@ -161,8 +161,8 @@ func ProcessUserCheckin(task models.Task) {
 		})
 
 		// Find and handle the recruitment thread
-		recruitmentThread, found := helper.FindForumThreadByTitle(bot.Discord, channels.GetRecruitmentForum(), e.UserID)
-		if !found {
+		rtm := helper.NewRecruitmentThreadManager(bot.Discord, e, e.UserID)
+		if !rtm.HasThread() {
 			logger.Error(logger.LogData{
 				"trace_id": e.TraceID,
 				"action":   "process_user_checkin",
@@ -172,56 +172,10 @@ func ProcessUserCheckin(task models.Task) {
 			return
 		}
 
-		// Reopen thread if needed
-		discordAPIWorker.NewRequest(e, func() error {
-			archived := false
-			_, err := bot.Discord.ChannelEditComplex(recruitmentThread.ID, &discordgo.ChannelEdit{
-				Archived: &archived,
-			})
-			if err != nil {
-				logger.Error(logger.LogData{
-					"trace_id": e.TraceID,
-					"action":   "process_user_checkin",
-					"message":  "Failed to reopen thread",
-					"error":    err.Error(),
-				})
-				return err
-			}
-			return nil
-		})
-
-		// Send message to thread
-		discordAPIWorker.NewRequest(e, func() error {
-			_, err := bot.Discord.ChannelMessageSendEmbed(recruitmentThread.ID, &embededMessage)
-			if err != nil {
-				logger.Error(logger.LogData{
-					"trace_id": e.TraceID,
-					"action":   "process_user_checkin",
-					"message":  "Failed to send message to recruitment thread",
-					"error":    err.Error(),
-				})
-				return err
-			}
-			return nil
-		})
-
-		// Re-archive thread
-		discordAPIWorker.NewRequest(e, func() error {
-			archived := true
-			_, err := bot.Discord.ChannelEditComplex(recruitmentThread.ID, &discordgo.ChannelEdit{
-				Archived: &archived,
-			})
-			if err != nil {
-				logger.Error(logger.LogData{
-					"trace_id": e.TraceID,
-					"action":   "process_user_checkin",
-					"message":  "Failed to re-archive thread",
-					"error":    err.Error(),
-				})
-				return err
-			}
-			return nil
-		})
+		// Reopen thread, send message, then re-archive
+		rtm.ReopenThread()
+		rtm.SendMessageEmbed(&embededMessage)
+		rtm.CloseThread("")
 
 		err = db.DeleteTaskFromRedis(ctx, task.TaskID)
 		if err != nil {

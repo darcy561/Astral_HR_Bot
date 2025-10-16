@@ -18,7 +18,6 @@ func FindForumThreadByTitle(s *discordgo.Session, channelID string, phrase strin
 	}
 
 	for _, thread := range activeThreadList.Threads {
-
 		if strings.Contains(strings.ToLower(thread.Name), strings.ToLower(phrase)) {
 			return thread, true
 		}
@@ -31,6 +30,7 @@ func FindForumThreadByTitle(s *discordgo.Session, channelID string, phrase strin
 		if err != nil {
 			return nil, false
 		}
+
 		for _, thread := range archivedThreads.Threads {
 			if strings.Contains(strings.ToLower(thread.Name), strings.ToLower(phrase)) {
 				return thread, true
