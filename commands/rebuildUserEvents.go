@@ -40,8 +40,63 @@ func RebuildUserEventsCommand(s *discordgo.Session, i *discordgo.InteractionCrea
 	}
 
 	if monitoringData == nil {
-		RespondToInteraction(s, i, "User is not currently being monitored", true)
-		return
+		// Try to infer scenarios from existing tasks for this user
+		existingTasks, err := db.GetTasksForUser(ctx, userID)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"action":  "rebuild_user_events_command",
+				"message": "Failed to get existing tasks while user has no monitoring",
+				"error":   err.Error(),
+				"user_id": userID,
+			})
+			RespondToInteraction(s, i, "User is not currently being monitored", true)
+			return
+		}
+
+		if len(existingTasks) == 0 {
+			RespondToInteraction(s, i, "User is not currently being monitored", true)
+			return
+		}
+
+		// Backfill new monitoring record
+		monitoringData = models.NewUserMonitoring(userID)
+
+		scenarioMap := map[models.TaskType]models.MonitoringScenario{
+			models.TaskRecruitmentCleanup: models.MonitoringScenarioRecruitmentProcess,
+			models.TaskUserCheckin:        models.MonitoringScenarioNewRecruit,
+		}
+		for _, t := range existingTasks {
+			if sc, ok := scenarioMap[t.FunctionName]; ok {
+				monitoringData.AddScenario(sc)
+			}
+		}
+
+		// Compute window
+		var earliest int64
+		for _, t := range existingTasks {
+			if earliest == 0 || (t.ScheduledTime > 0 && t.ScheduledTime < earliest) {
+				earliest = t.ScheduledTime
+			}
+		}
+		if earliest > 0 {
+			monitoringData.ExpiresAt = earliest
+			defaultDays := 7
+			if monitoringData.HasScenario(models.MonitoringScenarioNewRecruit) {
+				defaultDays = globals.GetNewRecruitTrackingDays()
+			} else if monitoringData.HasScenario(models.MonitoringScenarioRecruitmentProcess) {
+				defaultDays = globals.GetRecruitmentCleanupDelay()
+			}
+			monitoringData.StartedAt = time.Unix(earliest, 0).Add(-time.Duration(defaultDays) * 24 * time.Hour).Unix()
+		}
+
+		if err := db.SaveUserMonitoring(ctx, monitoringData); err != nil {
+			logger.Error(logger.LogData{
+				"action":  "rebuild_user_events_command",
+				"message": "Failed to save inferred monitoring data",
+				"error":   err.Error(),
+				"user_id": userID,
+			})
+		}
 	}
 
 	// Check existing tasks

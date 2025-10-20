@@ -2,7 +2,9 @@ package commands
 
 import (
 	"astralHRBot/db"
+	"astralHRBot/globals"
 	"astralHRBot/logger"
+	"astralHRBot/models"
 	"astralHRBot/workers/monitoring"
 	"context"
 	"fmt"
@@ -82,6 +84,52 @@ func RebuildAllUserEventsCommand(s *discordgo.Session, i *discordgo.InteractionC
 			})
 			errorCount++
 			continue
+		}
+
+		// If no scenarios are active, infer scenarios from existing tasks and backfill monitoring
+		if len(monitoringData.Scenarios) == 0 && len(existingTasks) > 0 {
+			// Map task types to scenarios
+			scenarioMap := map[models.TaskType]models.MonitoringScenario{
+				models.TaskRecruitmentCleanup: models.MonitoringScenarioRecruitmentProcess,
+				models.TaskUserCheckin:        models.MonitoringScenarioNewRecruit,
+			}
+
+			for _, t := range existingTasks {
+				if sc, ok := scenarioMap[t.FunctionName]; ok {
+					if !monitoringData.HasScenario(sc) {
+						monitoringData.AddScenario(sc)
+					}
+				}
+			}
+
+			// Set expiry/start if not set, based on upcoming task schedule
+			if monitoringData.ExpiresAt == 0 {
+				var earliest int64
+				for _, t := range existingTasks {
+					if earliest == 0 || (t.ScheduledTime > 0 && t.ScheduledTime < earliest) {
+						earliest = t.ScheduledTime
+					}
+				}
+				if earliest > 0 {
+					monitoringData.ExpiresAt = earliest
+					defaultDays := 7
+					if monitoringData.HasScenario(models.MonitoringScenarioNewRecruit) {
+						defaultDays = globals.GetNewRecruitTrackingDays()
+					} else if monitoringData.HasScenario(models.MonitoringScenarioRecruitmentProcess) {
+						defaultDays = globals.GetRecruitmentCleanupDelay()
+					}
+					monitoringData.StartedAt = time.Unix(earliest, 0).Add(-time.Duration(defaultDays) * 24 * time.Hour).Unix()
+				}
+			}
+
+			if err := db.SaveUserMonitoring(ctx, monitoringData); err != nil {
+				logger.Error(logger.LogData{
+					"action":  "rebuild_all_user_events_command",
+					"message": "Failed to save backfilled monitoring data",
+					"error":   err.Error(),
+					"user_id": userID,
+				})
+			}
 		}
 
 		// Remove existing tasks
