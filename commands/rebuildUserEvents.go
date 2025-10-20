@@ -2,7 +2,9 @@ package commands
 
 import (
 	"astralHRBot/db"
+	"astralHRBot/globals"
 	"astralHRBot/logger"
+	"astralHRBot/models"
 	"astralHRBot/workers/monitoring"
 	"context"
 	"fmt"
@@ -53,6 +55,57 @@ func RebuildUserEventsCommand(s *discordgo.Session, i *discordgo.InteractionCrea
 		})
 		RespondToInteraction(s, i, "Error retrieving existing tasks", true)
 		return
+	}
+
+	// If no scenarios are active, infer scenarios from existing tasks and backfill monitoring
+	scenariosAdded := []string{}
+	if len(monitoringData.Scenarios) == 0 && len(existingTasks) > 0 {
+		// Map task types to scenarios
+		scenarioMap := map[models.TaskType]models.MonitoringScenario{
+			models.TaskRecruitmentCleanup: models.MonitoringScenarioRecruitmentProcess,
+			models.TaskUserCheckin:        models.MonitoringScenarioNewRecruit,
+		}
+
+		// Determine any scenarios present based on tasks
+		for _, t := range existingTasks {
+			if sc, ok := scenarioMap[t.FunctionName]; ok {
+				if !monitoringData.HasScenario(sc) {
+					monitoringData.AddScenario(sc)
+					scenariosAdded = append(scenariosAdded, string(sc))
+				}
+			}
+		}
+
+		// Set expiry/start if not set, based on upcoming task schedule
+		if monitoringData.ExpiresAt == 0 {
+			var earliest int64 = 0
+			for _, t := range existingTasks {
+				if earliest == 0 || (t.ScheduledTime > 0 && t.ScheduledTime < earliest) {
+					earliest = t.ScheduledTime
+				}
+			}
+			if earliest > 0 {
+				monitoringData.ExpiresAt = earliest
+				// Derive a reasonable start time using scenario defaults (prefer new_recruit if present)
+				defaultDays := 7
+				if monitoringData.HasScenario(models.MonitoringScenarioNewRecruit) {
+					defaultDays = globals.GetNewRecruitTrackingDays()
+				} else if monitoringData.HasScenario(models.MonitoringScenarioRecruitmentProcess) {
+					defaultDays = globals.GetRecruitmentCleanupDelay()
+				}
+				monitoringData.StartedAt = time.Unix(earliest, 0).Add(-time.Duration(defaultDays) * 24 * time.Hour).Unix()
+			}
+		}
+
+		// Persist backfilled monitoring data
+		if err := db.SaveUserMonitoring(ctx, monitoringData); err != nil {
+			logger.Error(logger.LogData{
+				"action":  "rebuild_user_events_command",
+				"message": "Failed to save backfilled monitoring data",
+				"error":   err.Error(),
+				"user_id": userID,
+			})
+		}
 	}
 
 	// Remove existing tasks first
@@ -121,11 +174,19 @@ func RebuildUserEventsCommand(s *discordgo.Session, i *discordgo.InteractionCrea
 	response += fmt.Sprintf("**Removed:** %d existing tasks\n", tasksRemoved)
 	response += fmt.Sprintf("**Created:** %d new tasks\n\n", len(newTasks))
 
+	if len(scenariosAdded) > 0 {
+		response += fmt.Sprintf("**Backfilled Scenarios:** `%v`\n\n", scenariosAdded)
+	}
+
 	if len(newTasks) > 0 {
 		response += "**📋 New Tasks:**\n"
 		for _, task := range newTasks {
 			scheduledTime := time.Unix(task.ScheduledTime, 0).Format("2006-01-02 15:04:05")
-			response += fmt.Sprintf("• **%s** - Scheduled: `%s`\n", string(task.FunctionName), scheduledTime)
+			scenarioLabel := task.Scenario
+			if scenarioLabel == "" {
+				scenarioLabel = "unspecified"
+			}
+			response += fmt.Sprintf("• **%s** [%s] - Scheduled: `%s`\n", string(task.FunctionName), scenarioLabel, scheduledTime)
 		}
 	}
 

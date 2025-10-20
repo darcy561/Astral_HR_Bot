@@ -180,6 +180,53 @@ func (t *tracker) updateAnalyticsForAction(userID string, action models.Monitori
 	}
 }
 
+// updateAnalyticsForActionInChannel updates analytics only for scenarios that
+// both track the given action AND allow the provided channel via
+// models.ScenarioChannelEnvFilter. If a scenario has no channel filter, it is allowed.
+func (t *tracker) updateAnalyticsForActionInChannel(userID string, channelID string, action models.MonitoringAction, field string, amount int) {
+	ctx := context.Background()
+
+	userMonitoring, err := db.GetUserMonitoring(ctx, userID)
+	if err != nil || userMonitoring == nil {
+		return
+	}
+
+	for scenario := range userMonitoring.Scenarios {
+		// Check action is tracked by scenario
+		actions, exists := models.ScenarioConfig[scenario]
+		if !exists {
+			continue
+		}
+		tracksAction := false
+		for _, scenarioAction := range actions {
+			if scenarioAction == action {
+				tracksAction = true
+				break
+			}
+		}
+		if !tracksAction {
+			continue
+		}
+
+		// Channel allow-list check
+		if !isChannelAllowedForScenario(scenario, channelID) {
+			continue
+		}
+
+		key := fmt.Sprintf("user:%s:analytics:%s", userID, scenario)
+		err := db.IncreaseAttributeCount(ctx, key, field, amount)
+		if err != nil {
+			logger.Error(logger.LogData{
+				"action":   "update_analytics_for_action_in_channel",
+				"message":  "failed to update analytics for scenario",
+				"error":    err.Error(),
+				"scenario": string(scenario),
+				"field":    field,
+			})
+		}
+	}
+}
+
 //handlers
 
 func (t *tracker) handleMessageCreate(m *discordgo.MessageCreate) {
@@ -189,11 +236,14 @@ func (t *tracker) handleMessageCreate(m *discordgo.MessageCreate) {
 
 	ctx := context.Background()
 
-	// Update channel activity for all active scenarios
-	// This ensures most active channel is tracked per scenario
+	// Update channel activity for all active scenarios, respecting channel filters
 	userMonitoring, err := db.GetUserMonitoring(ctx, m.Author.ID)
 	if err == nil && userMonitoring != nil {
 		for scenario := range userMonitoring.Scenarios {
+			// Only count channel usage if scenario allows this channel (or has no filter)
+			if !isChannelAllowedForScenario(scenario, m.ChannelID) {
+				continue
+			}
 			err := db.IncreaseChannelCount(ctx, m.Author.ID, m.ChannelID, string(scenario))
 			if err != nil {
 				logger.Error(logger.LogData{
@@ -217,8 +267,8 @@ func (t *tracker) handleMessageCreate(m *discordgo.MessageCreate) {
 		"user_id": m.Author.ID,
 	})
 
-	// Update analytics for all scenarios that track message creation
-	t.updateAnalyticsForAction(m.Author.ID, models.ActionMessageCreate, "messages", 1)
+	// Update analytics only for scenarios that track message creation AND allow this channel
+	t.updateAnalyticsForActionInChannel(m.Author.ID, m.ChannelID, models.ActionMessageCreate, "messages", 1)
 
 	logger.Debug(logger.LogData{
 		"action":     "handle_message_create",
@@ -237,8 +287,8 @@ func (t *tracker) handleMessageEdit(m *discordgo.MessageUpdate) {
 		return
 	}
 
-	// Update analytics for all scenarios that track message edits
-	t.updateAnalyticsForAction(m.Author.ID, models.ActionMessageEdit, "message_edits", 1)
+	// Update analytics only for scenarios that track message edits AND allow this channel
+	t.updateAnalyticsForActionInChannel(m.Author.ID, m.ChannelID, models.ActionMessageEdit, "message_edits", 1)
 }
 
 func (t *tracker) handleMessageDelete(m *discordgo.MessageDelete) {
@@ -246,8 +296,8 @@ func (t *tracker) handleMessageDelete(m *discordgo.MessageDelete) {
 		return
 	}
 
-	// Update analytics for all scenarios that track message deletes
-	t.updateAnalyticsForAction(m.Author.ID, models.ActionMessageDelete, "message_deletes", 1)
+	// Update analytics only for scenarios that track message deletes AND allow this channel
+	t.updateAnalyticsForActionInChannel(m.Author.ID, m.ChannelID, models.ActionMessageDelete, "message_deletes", 1)
 }
 
 func (t *tracker) handleVoiceState(v *discordgo.VoiceStateUpdate) {

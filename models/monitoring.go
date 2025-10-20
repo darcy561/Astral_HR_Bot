@@ -47,6 +47,17 @@ var ScenarioConfig = map[MonitoringScenario][]MonitoringAction{
 	},
 }
 
+// ScenarioChannelEnvFilter optionally restricts which channels are considered
+// for each scenario when rebuilding analytics. The values are environment
+// variable names that resolve to Discord channel IDs.
+// If a scenario is absent or its list is empty, all text channels are considered.
+var ScenarioChannelEnvFilter = map[MonitoringScenario][]string{
+	// Recruitment process analytics only considers messages in the recruitment channel
+	MonitoringScenarioRecruitmentProcess: {
+		"RECRUITMENT_CHANNEL_ID",
+	},
+}
+
 // ScenarioTaskConfig defines which task functions are associated with each scenario
 var ScenarioTaskConfig = map[MonitoringScenario][]string{
 	MonitoringScenarioNewRecruit: {
