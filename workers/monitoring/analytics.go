@@ -24,34 +24,21 @@ type AnalyticsResult struct {
 	EndTime         time.Time
 }
 
-// RebuildUserAnalytics rebuilds analytics data for a specific user
-// This can be called from other places as needed
-func RebuildUserAnalytics(userID string, monitoringData *models.UserMonitoring, s *discordgo.Session, traceID string) (*AnalyticsResult, error) {
+// rebuildAnalyticsForWindow is the core implementation used by public wrappers.
+// It computes analytics in the provided time window and writes results for the given scenarios.
+func rebuildAnalyticsForWindow(userID string, scenarios []models.MonitoringScenario, startTime, endTime time.Time, s *discordgo.Session, traceID string) (*AnalyticsResult, error) {
 	ctx := context.Background()
+	var err error
 
 	logger.Debug(logger.LogData{
-		"trace_id":       traceID,
-		"action":         "rebuild_user_analytics_debug",
-		"message":        "Received monitoring data for analytics",
-		"user_id":        userID,
-		"started_at":     time.Unix(monitoringData.StartedAt, 0).Format(time.RFC3339),
-		"expires_at":     time.Unix(monitoringData.ExpiresAt, 0).Format(time.RFC3339),
-		"expires_at_raw": monitoringData.ExpiresAt,
-		"scenarios":      monitoringData.GetScenarios(),
+		"trace_id":   traceID,
+		"action":     "rebuild_user_analytics_debug",
+		"message":    "Preparing to rebuild analytics for explicit window",
+		"user_id":    userID,
+		"start_time": startTime.Format(time.RFC3339),
+		"end_time":   endTime.Format(time.RFC3339),
+		"scenarios":  scenarios,
 	})
-
-	// Determine the time period for analytics
-	startTime := time.Unix(monitoringData.StartedAt, 0)
-	var endTime time.Time
-
-	if monitoringData.ExpiresAt > 0 {
-		// If there is an expiry date, use this timeframe
-		endTime = time.Unix(monitoringData.ExpiresAt, 0)
-	} else {
-		// If there isn't an expiry, use the start date + the default time for the scenario
-		trackingWindow := time.Duration(globals.GetNewRecruitTrackingDays()) * 24 * time.Hour
-		endTime = startTime.Add(trackingWindow)
-	}
 
 	logger.Debug(logger.LogData{
 		"trace_id":                       traceID,
@@ -60,10 +47,30 @@ func RebuildUserAnalytics(userID string, monitoringData *models.UserMonitoring, 
 		"user_id":                        userID,
 		"start_time":                     startTime.Format(time.RFC3339),
 		"end_time":                       endTime.Format(time.RFC3339),
-		"monitoring_data_started_at":     time.Unix(monitoringData.StartedAt, 0).Format(time.RFC3339),
-		"monitoring_data_expires_at":     time.Unix(monitoringData.ExpiresAt, 0).Format(time.RFC3339),
-		"monitoring_data_expires_at_raw": monitoringData.ExpiresAt,
+		"monitoring_data_started_at":     startTime.Format(time.RFC3339),
+		"monitoring_data_expires_at":     endTime.Format(time.RFC3339),
+		"monitoring_data_expires_at_raw": endTime.Unix(),
 	})
+
+	// Determine which metrics to compute based on scenario actions
+	needMessages := false
+	needVoice := false
+	needInvites := false
+	for _, scenario := range scenarios {
+		if actions, ok := models.ScenarioConfig[scenario]; ok {
+			for _, a := range actions {
+				if a == models.ActionMessageCreate {
+					needMessages = true
+				}
+				if a == models.ActionVoiceJoin {
+					needVoice = true
+				}
+				if a == models.ActionInviteCreate {
+					needInvites = true
+				}
+			}
+		}
+	}
 
 	// Initialize analytics counters
 	messages := int64(0)
@@ -72,68 +79,91 @@ func RebuildUserAnalytics(userID string, monitoringData *models.UserMonitoring, 
 	topChannelID := ""
 	channelMessageCounts := make(map[string]int64)
 
-	// Get all channels in the guild
-	guild, err := s.State.Guild(s.State.Guilds[0].ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get guild: %w", err)
+	var guildID string
+	if needMessages || needVoice || needInvites {
+		// Get guild from state (assumes single guild)
+		guild, err := s.State.Guild(s.State.Guilds[0].ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get guild: %w", err)
+		}
+		guildID = guild.ID
+
+		if needMessages {
+			// Build allow-list from scenarios; empty map means unrestricted
+			allowedChannelIDs := getAllowedChannelIDsForScenarios(scenarios)
+
+			// Scan each channel for user messages
+			for _, channel := range guild.Channels {
+				// Skip non-text channels
+				if channel.Type != discordgo.ChannelTypeGuildText {
+					continue
+				}
+
+				if len(allowedChannelIDs) > 0 {
+					if _, ok := allowedChannelIDs[channel.ID]; !ok {
+						continue
+					}
+				}
+
+				// Get messages from the channel during the monitoring period
+				channelMessages, err := getChannelMessagesForUser(s, channel.ID, userID, startTime, endTime)
+				if err != nil {
+					logger.Warn(logger.LogData{
+						"trace_id":   traceID,
+						"action":     "rebuild_user_analytics",
+						"message":    "Failed to get messages from channel",
+						"error":      err.Error(),
+						"user_id":    userID,
+						"channel_id": channel.ID,
+					})
+					continue
+				}
+
+				// Count messages for this channel
+				channelCount := int64(len(channelMessages))
+				channelMessageCounts[channel.ID] = channelCount
+				messages += channelCount
+
+				// Update top channel
+				if channelCount > 0 && (topChannelID == "" || channelCount > channelMessageCounts[topChannelID]) {
+					topChannelID = channel.ID
+				}
+			}
+		}
 	}
 
-	// Scan each channel for user messages
-	for _, channel := range guild.Channels {
-		// Skip non-text channels
-		if channel.Type != discordgo.ChannelTypeGuildText {
-			continue
-		}
-
-		// Get messages from the channel during the monitoring period
-		channelMessages, err := getChannelMessagesForUser(s, channel.ID, userID, startTime, endTime)
+	if needVoice {
+		// Get voice joins from audit log
+		vj, err := getVoiceJoinsFromAuditLog(s, guildID, userID, startTime, endTime, traceID)
 		if err != nil {
 			logger.Warn(logger.LogData{
-				"trace_id":   traceID,
-				"action":     "rebuild_user_analytics",
-				"message":    "Failed to get messages from channel",
-				"error":      err.Error(),
-				"user_id":    userID,
-				"channel_id": channel.ID,
+				"trace_id": traceID,
+				"action":   "rebuild_user_analytics",
+				"message":  "Failed to get voice joins from audit log",
+				"error":    err.Error(),
+				"user_id":  userID,
 			})
-			continue
-		}
-
-		// Count messages for this channel
-		channelCount := int64(len(channelMessages))
-		channelMessageCounts[channel.ID] = channelCount
-		messages += channelCount
-
-		// Update top channel
-		if channelCount > 0 && (topChannelID == "" || channelCount > channelMessageCounts[topChannelID]) {
-			topChannelID = channel.ID
+			voiceJoins = 0
+		} else {
+			voiceJoins = vj
 		}
 	}
 
-	// Get voice joins from audit log
-	voiceJoins, err = getVoiceJoinsFromAuditLog(s, guild.ID, userID, startTime, endTime, traceID)
-	if err != nil {
-		logger.Warn(logger.LogData{
-			"trace_id": traceID,
-			"action":   "rebuild_user_analytics",
-			"message":  "Failed to get voice joins from audit log",
-			"error":    err.Error(),
-			"user_id":  userID,
-		})
-		voiceJoins = 0
-	}
-
-	// Get invites from audit log
-	invites, err = getInvitesFromAuditLog(s, guild.ID, userID, startTime, endTime, traceID)
-	if err != nil {
-		logger.Warn(logger.LogData{
-			"trace_id": traceID,
-			"action":   "rebuild_user_analytics",
-			"message":  "Failed to get invites from audit log",
-			"error":    err.Error(),
-			"user_id":  userID,
-		})
-		invites = 0
+	if needInvites {
+		// Get invites from audit log
+		inv, err := getInvitesFromAuditLog(s, guildID, userID, startTime, endTime, traceID)
+		if err != nil {
+			logger.Warn(logger.LogData{
+				"trace_id": traceID,
+				"action":   "rebuild_user_analytics",
+				"message":  "Failed to get invites from audit log",
+				"error":    err.Error(),
+				"user_id":  userID,
+			})
+			invites = 0
+		} else {
+			invites = inv
+		}
 	}
 
 	logger.Info(logger.LogData{
@@ -145,11 +175,10 @@ func RebuildUserAnalytics(userID string, monitoringData *models.UserMonitoring, 
 		"voice_joins":      voiceJoins,
 		"invites":          invites,
 		"top_channel_id":   topChannelID,
-		"channels_scanned": len(guild.Channels),
+		"channels_scanned": len(channelMessageCounts),
 	})
 
 	// Update analytics in Redis for each scenario
-	scenarios := monitoringData.GetScenarios()
 	for _, scenario := range scenarios {
 		err = db.UpdateUserAnalytics(ctx, userID, string(scenario), messages, voiceJoins, invites, topChannelID)
 		if err != nil {
@@ -170,10 +199,69 @@ func RebuildUserAnalytics(userID string, monitoringData *models.UserMonitoring, 
 		VoiceJoins:      voiceJoins,
 		Invites:         invites,
 		TopChannelID:    topChannelID,
-		ChannelsScanned: len(guild.Channels),
+		ChannelsScanned: len(channelMessageCounts),
 		StartTime:       startTime,
 		EndTime:         endTime,
 	}, nil
+}
+
+// RebuildUserAnalytics rebuilds analytics data for a specific user using their monitoring data
+// This preserves existing behavior for callers that have monitoring state available.
+func RebuildUserAnalytics(userID string, monitoringData *models.UserMonitoring, s *discordgo.Session, traceID string) (*AnalyticsResult, error) {
+	scenarios := monitoringData.GetScenarios()
+	if len(scenarios) == 0 {
+		return nil, fmt.Errorf("no scenarios available for user %s", userID)
+	}
+
+	// Choose a representative scenario for the returned result
+	// Prefer new_recruit if present, otherwise first scenario
+	representative := scenarios[0]
+	for _, sc := range scenarios {
+		if sc == models.MonitoringScenarioNewRecruit {
+			representative = sc
+			break
+		}
+	}
+
+	var representativeResult *AnalyticsResult
+
+	for _, scenario := range scenarios {
+		startTime := time.Unix(monitoringData.StartedAt, 0)
+		var endTime time.Time
+
+		if monitoringData.ExpiresAt > 0 {
+			endTime = time.Unix(monitoringData.ExpiresAt, 0)
+		} else {
+			// Determine default window based on scenario
+			switch scenario {
+			case models.MonitoringScenarioNewRecruit:
+				endTime = startTime.Add(time.Duration(globals.GetNewRecruitTrackingDays()) * 24 * time.Hour)
+			case models.MonitoringScenarioRecruitmentProcess:
+				endTime = startTime.Add(time.Duration(globals.GetRecruitmentCleanupDelay()) * 24 * time.Hour)
+			default:
+				// Fallback to 7 days if unknown scenario
+				endTime = startTime.Add(7 * 24 * time.Hour)
+			}
+		}
+
+		// Compute and persist analytics for this scenario only
+		res, err := rebuildAnalyticsForWindow(userID, []models.MonitoringScenario{scenario}, startTime, endTime, s, traceID)
+		if err != nil {
+			return nil, err
+		}
+
+		if scenario == representative {
+			representativeResult = res
+		}
+	}
+
+	return representativeResult, nil
+}
+
+// RebuildUserAnalyticsForScenario rebuilds analytics for an explicit window and single scenario
+// This is useful when reconstructing scenarios from forum threads where monitoring state may be missing.
+func RebuildUserAnalyticsForScenario(userID string, scenario models.MonitoringScenario, startTime, endTime time.Time, s *discordgo.Session, traceID string) (*AnalyticsResult, error) {
+	return rebuildAnalyticsForWindow(userID, []models.MonitoringScenario{scenario}, startTime, endTime, s, traceID)
 }
 
 // getChannelMessagesForUser gets messages from a channel for a specific user within a time period

@@ -5,6 +5,8 @@ import (
 	"astralHRBot/globals"
 	"astralHRBot/logger"
 	"astralHRBot/models"
+	"astralHRBot/workers/eventWorker"
+	"astralHRBot/workers/monitoring"
 	"context"
 	"fmt"
 	"regexp"
@@ -201,6 +203,16 @@ func RebuildRecruitmentProcessScenariosCommand(s *discordgo.Session, i *discordg
 		}
 
 		recreatedScenarios++
+
+		// Also schedule midpoint reminder if it's in the future
+		if err := monitoring.CreateRecruitmentReminderAtMidpoint(ctx, userID, messageTime, models.MonitoringScenarioRecruitmentProcess); err != nil {
+			logger.Error(logger.LogData{
+				"action":  "rebuild_recruitment_scenarios",
+				"message": "Failed to create recruitment reminder",
+				"error":   err.Error(),
+				"user_id": userID,
+			})
+		}
 		userDetails = append(userDetails, fmt.Sprintf("**%s** - ✅ Recreated scenario (%s, expires: %s)",
 			userName, messageType, expirationTime.Format("2006-01-02 15:04:05")))
 
@@ -212,6 +224,54 @@ func RebuildRecruitmentProcessScenariosCommand(s *discordgo.Session, i *discordg
 			"message_type":    messageType,
 			"expiration_time": expirationTime.Format(time.RFC3339),
 		})
+
+		// Ensure the scenario is attached to the user's monitoring data with correct window
+		_ = monitoring.EnsureScenarioWindow(ctx, userID, models.MonitoringScenarioRecruitmentProcess, messageTime, expirationTime)
+
+		// Trigger analytics rebuild for this user using scenario-based monitoring data
+		eventWorker.Submit(userID, func(e eventWorker.Event) {
+			logger.Info(logger.LogData{
+				"trace_id": e.TraceID,
+				"action":   "rebuild_analytics_for_recruitment_process",
+				"message":  "Starting analytics rebuild for recruitment process scenario",
+				"user_id":  e.UserID,
+			})
+
+			// Build a minimal monitoring record representing just this scenario and its time bounds
+			um := &models.UserMonitoring{UserID: e.UserID, Scenarios: map[models.MonitoringScenario]struct{}{models.MonitoringScenarioRecruitmentProcess: {}}}
+			um.SetStartTime(messageTime)
+			um.SetExpiry(expirationTime)
+
+			result, err := monitoring.RebuildUserAnalytics(e.UserID, um, s, e.TraceID)
+			if err != nil {
+				logger.Error(logger.LogData{
+					"trace_id": e.TraceID,
+					"action":   "rebuild_analytics_for_recruitment_process",
+					"message":  "Failed to rebuild analytics",
+					"error":    err.Error(),
+					"user_id":  e.UserID,
+				})
+			} else {
+				logger.Info(logger.LogData{
+					"trace_id": e.TraceID,
+					"action":   "rebuild_analytics_for_recruitment_process",
+					"message":  "Successfully rebuilt analytics",
+					"user_id":  e.UserID,
+				})
+
+				// Send results back to the invoking user
+				FollowUpMessage(s, i, fmt.Sprintf(
+					"📊 Analytics rebuilt for %s (recruitment process)\n- Messages: %d\n- Voice joins: %d\n- Invites: %d\n- Top channel: %s\n- Window: %s → %s",
+					userName,
+					result.Messages,
+					result.VoiceJoins,
+					result.Invites,
+					result.TopChannelID,
+					result.StartTime.Format("2006-01-02 15:04:05"),
+					result.EndTime.Format("2006-01-02 15:04:05"),
+				), true)
+			}
+		}, nil)
 	}
 
 	// Create final response

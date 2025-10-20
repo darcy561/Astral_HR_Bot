@@ -144,13 +144,17 @@ func MonitoringStatusCommand(s *discordgo.Session, i *discordgo.InteractionCreat
 			for _, task := range tasks {
 				scheduledTime := time.Unix(task.ScheduledTime, 0)
 				timeUntilTask := time.Until(scheduledTime)
+				scenarioLabel := task.Scenario
+				if scenarioLabel == "" {
+					scenarioLabel = "unspecified"
+				}
 
 				if timeUntilTask > 0 {
-					taskDetails = append(taskDetails, fmt.Sprintf("`%s` (in %s)",
-						string(task.FunctionName), formatDuration(timeUntilTask)))
+					taskDetails = append(taskDetails, fmt.Sprintf("`%s` [%s] (in %s)",
+						string(task.FunctionName), scenarioLabel, formatDuration(timeUntilTask)))
 				} else {
-					taskDetails = append(taskDetails, fmt.Sprintf("`%s` (overdue by %s)",
-						string(task.FunctionName), formatDuration(-timeUntilTask)))
+					taskDetails = append(taskDetails, fmt.Sprintf("`%s` [%s] (overdue by %s)",
+						string(task.FunctionName), scenarioLabel, formatDuration(-timeUntilTask)))
 				}
 			}
 			userDetail += fmt.Sprintf(" | Tasks: %s", fmt.Sprintf("%v", taskDetails))

@@ -9,6 +9,7 @@ import (
 func RegisterHandlers() {
 	models.TaskHandlers[models.TaskRecruitmentCleanup] = ProcessRecruitmentCleanup
 	models.TaskHandlers[models.TaskUserCheckin] = ProcessUserCheckin
+	models.TaskHandlers[models.TaskRecruitmentReminder] = ProcessRecruitmentReminder
 
 	logger.Info(logger.LogData{
 		"action":  "register_handlers",
