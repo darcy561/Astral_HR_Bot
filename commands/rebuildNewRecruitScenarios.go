@@ -231,51 +231,15 @@ func RebuildNewRecruitScenariosCommand(s *discordgo.Session, i *discordgo.Intera
 		// Create the monitoring scenario
 		monitoring.AddUserTracking(userID, models.MonitoringScenarioNewRecruit, time.Duration(defaultTrackingDays)*24*time.Hour)
 
-		// Get the monitoring data and set the correct start time
-		userMonitoring, err = db.GetUserMonitoring(ctx, userID)
-		if err == nil && userMonitoring != nil {
-			logger.Debug(logger.LogData{
-				"action":         "rebuild_new_recruit_scenarios_command",
-				"message":        "Setting correct start time",
-				"user_id":        userID,
-				"old_start_time": time.Unix(userMonitoring.StartedAt, 0).Format(time.RFC3339),
-				"new_start_time": messageTime.Format(time.RFC3339),
-			})
-			userMonitoring.SetStartTime(messageTime)
-			userMonitoring.SetExpiry(expirationTime)
+		// Persist scenario and window using helper
+		_ = monitoring.EnsureScenarioWindow(ctx, userID, models.MonitoringScenarioNewRecruit, messageTime, expirationTime)
 
-			// Save the corrected monitoring data to the database
-			logger.Debug(logger.LogData{
-				"action":     "rebuild_new_recruit_scenarios_command",
-				"message":    "Saving corrected monitoring data to database",
-				"user_id":    userID,
-				"started_at": time.Unix(userMonitoring.StartedAt, 0).Format(time.RFC3339),
-				"expires_at": time.Unix(userMonitoring.ExpiresAt, 0).Format(time.RFC3339),
-				"scenarios":  userMonitoring.GetScenarios(),
-			})
-
-			err = db.SaveUserMonitoring(ctx, userMonitoring)
-			if err != nil {
-				logger.Error(logger.LogData{
-					"action":  "rebuild_new_recruit_scenarios_command",
-					"message": "Failed to save corrected monitoring data",
-					"error":   err.Error(),
-					"user_id": userID,
-				})
-			} else {
-				logger.Debug(logger.LogData{
-					"action":            "rebuild_new_recruit_scenarios_command",
-					"message":           "Successfully saved corrected monitoring data to database",
-					"user_id":           userID,
-					"saved_start_time":  time.Unix(userMonitoring.StartedAt, 0).Format(time.RFC3339),
-					"saved_expiry_time": time.Unix(userMonitoring.ExpiresAt, 0).Format(time.RFC3339),
-				})
-			}
-		}
+		// Fetch fresh monitoring data for analytics context
+		userMonitoring, _ = db.GetUserMonitoring(ctx, userID)
 
 		// Create the user checkin task
 		params := &models.UserCheckinParams{UserID: userID}
-		scheduledTime := userMonitoring.ExpiresAt
+		scheduledTime := expirationTime.Unix()
 		newTask, err := models.NewTaskWithScenario(
 			models.TaskUserCheckin,
 			params,

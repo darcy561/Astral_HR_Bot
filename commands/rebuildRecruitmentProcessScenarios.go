@@ -215,6 +215,9 @@ func RebuildRecruitmentProcessScenariosCommand(s *discordgo.Session, i *discordg
 			"expiration_time": expirationTime.Format(time.RFC3339),
 		})
 
+		// Ensure the scenario is attached to the user's monitoring data with correct window
+		_ = monitoring.EnsureScenarioWindow(ctx, userID, models.MonitoringScenarioRecruitmentProcess, messageTime, expirationTime)
+
 		// Trigger analytics rebuild for this user using scenario-based monitoring data
 		eventWorker.Submit(userID, func(e eventWorker.Event) {
 			logger.Info(logger.LogData{
