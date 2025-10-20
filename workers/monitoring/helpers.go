@@ -6,6 +6,7 @@ import (
 	"astralHRBot/logger"
 	"astralHRBot/models"
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -86,4 +87,33 @@ func BackfillMonitoringFromTasks(ctx context.Context, userID string, monitoringD
 	}
 
 	return monitoringData, scenariosAdded, nil
+}
+
+// CreateRecruitmentReminderAtMidpoint creates a recruitment reminder task at the midpoint
+// of the recruitment process duration, but only if the midpoint is in the future.
+func CreateRecruitmentReminderAtMidpoint(ctx context.Context, userID string, startTime time.Time, scenario models.MonitoringScenario) error {
+	// Calculate midpoint: start + (delay * 12 hours)
+	midpoint := startTime.Add(time.Duration(globals.GetRecruitmentCleanupDelay()) * 12 * time.Hour).Unix()
+
+	// Only create the reminder if it's in the future
+	if midpoint <= time.Now().Unix() {
+		return nil
+	}
+
+	reminderParams := &models.RecruitmentReminderParams{UserID: userID}
+	reminderTask, err := models.NewTaskWithScenario(
+		models.TaskRecruitmentReminder,
+		reminderParams,
+		midpoint,
+		string(scenario),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create recruitment reminder task: %w", err)
+	}
+
+	if err := db.SaveTaskToRedis(ctx, *reminderTask); err != nil {
+		return fmt.Errorf("failed to save recruitment reminder task: %w", err)
+	}
+
+	return nil
 }

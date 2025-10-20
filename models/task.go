@@ -9,14 +9,16 @@ import (
 type TaskType string
 
 const (
-	TaskRecruitmentCleanup TaskType = "recruitmentCleanup"
-	TaskUserCheckin        TaskType = "userCheckin"
+	TaskRecruitmentCleanup  TaskType = "recruitmentCleanup"
+	TaskUserCheckin         TaskType = "userCheckin"
+	TaskRecruitmentReminder TaskType = "recruitmentReminder"
 )
 
 // TaskTypeMap maps task types to their parameter types
 var TaskTypeMap = map[TaskType]func() TaskParams{
-	TaskRecruitmentCleanup: func() TaskParams { return &RecruitmentCleanupParams{} },
-	TaskUserCheckin:        func() TaskParams { return &UserCheckinParams{} },
+	TaskRecruitmentCleanup:  func() TaskParams { return &RecruitmentCleanupParams{} },
+	TaskUserCheckin:         func() TaskParams { return &UserCheckinParams{} },
+	TaskRecruitmentReminder: func() TaskParams { return &RecruitmentReminderParams{} },
 }
 
 // TaskParams is an interface that all function-specific parameter structs must implement
@@ -135,5 +137,20 @@ func (p *UserCheckinParams) Validate() error {
 }
 
 func (p *UserCheckinParams) GetUserID() string {
+	return p.UserID
+}
+
+type RecruitmentReminderParams struct {
+	UserID string `json:"user_id"`
+}
+
+func (p *RecruitmentReminderParams) Validate() error {
+	if p.UserID == "" {
+		return fmt.Errorf("user_id is required")
+	}
+	return nil
+}
+
+func (p *RecruitmentReminderParams) GetUserID() string {
 	return p.UserID
 }

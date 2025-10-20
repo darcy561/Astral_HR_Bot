@@ -122,6 +122,18 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 			return true
 		}
 
+		// Also schedule midpoint reminder for recruitment process if it's in the future
+		startTime := time.Now()
+		if err := monitoring.CreateRecruitmentReminderAtMidpoint(context.Background(), m.User.ID, startTime, models.MonitoringScenarioRecruitmentProcess); err != nil {
+			logger.Error(logger.LogData{
+				"trace_id": e.TraceID,
+				"action":   "create_recruitment_reminder",
+				"message":  "Failed to create recruitment reminder",
+				"error":    err.Error(),
+				"user_id":  m.User.ID,
+			})
+		}
+
 		monitoring.AddScenario(m.User.ID, models.MonitoringScenarioRecruitmentProcess)
 
 		logger.Debug(logger.LogData{
@@ -158,6 +170,9 @@ func recruitAuthenticated(s *discordgo.Session, m *discordgo.GuildMemberUpdate, 
 			}
 			return nil
 		})
+
+		helper.SendDirectMessage(s, m.User.ID,
+			"The authentication steps for Astral Acquisitions Inc have been completed. Please reach out to a recruiter in the recruitment channel.", e)
 
 		rtm := helper.NewRecruitmentThreadManager(s, e, m.User.ID)
 		if rtm.HasThread() {

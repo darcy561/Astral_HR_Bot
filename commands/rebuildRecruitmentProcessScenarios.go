@@ -203,6 +203,16 @@ func RebuildRecruitmentProcessScenariosCommand(s *discordgo.Session, i *discordg
 		}
 
 		recreatedScenarios++
+
+		// Also schedule midpoint reminder if it's in the future
+		if err := monitoring.CreateRecruitmentReminderAtMidpoint(ctx, userID, messageTime, models.MonitoringScenarioRecruitmentProcess); err != nil {
+			logger.Error(logger.LogData{
+				"action":  "rebuild_recruitment_scenarios",
+				"message": "Failed to create recruitment reminder",
+				"error":   err.Error(),
+				"user_id": userID,
+			})
+		}
 		userDetails = append(userDetails, fmt.Sprintf("**%s** - ✅ Recreated scenario (%s, expires: %s)",
 			userName, messageType, expirationTime.Format("2006-01-02 15:04:05")))
 

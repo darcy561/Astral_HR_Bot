@@ -922,6 +922,19 @@ func recreateTaskForScenario(userID string, scenario models.MonitoringScenario, 
 				scheduledTime,
 				string(scenario),
 			)
+		case "ProcessRecruitmentReminder":
+			// Use helper function to create reminder at midpoint if it's in the future
+			startTime := time.Unix(monitoringData.StartedAt, 0)
+			if err := CreateRecruitmentReminderAtMidpoint(ctx, userID, startTime, scenario); err != nil {
+				logger.Error(logger.LogData{
+					"action":  "recreate_task_for_scenario",
+					"message": "Failed to create recruitment reminder",
+					"error":   err.Error(),
+					"user_id": userID,
+				})
+			}
+			// No task to return since it's handled by the helper
+			return nil
 		case "ProcessUserCheckin":
 			params := &models.UserCheckinParams{UserID: userID}
 			task, err = models.NewTaskWithScenario(

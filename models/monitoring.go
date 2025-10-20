@@ -65,6 +65,7 @@ var ScenarioTaskConfig = map[MonitoringScenario][]string{
 	},
 	MonitoringScenarioRecruitmentProcess: {
 		"ProcessRecruitmentCleanup",
+		"ProcessRecruitmentReminder",
 	},
 }
 
