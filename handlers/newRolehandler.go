@@ -9,7 +9,6 @@ import (
 	"astralHRBot/models"
 	"astralHRBot/roles"
 	"astralHRBot/users"
-	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
 	"astralHRBot/workers/monitoring"
 	"context"
@@ -43,33 +42,11 @@ func welcomeNewRecruit(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a [
 			"member_id": m.User.ID,
 		})
 
-		channelID := channels.GetRecruitmentChannel()
 		message := fmt.Sprintf(globals.RecruitmentWelcomeMessage, m.User.ID)
-
-		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(logger.LogData{
-				"trace_id":  e.TraceID,
-				"action":    "welcome_message_sent",
-				"member_id": m.User.ID,
-				"channel":   channelID,
-			})
-
-			_, err := s.ChannelMessageSend(channelID, message)
-			return err
-		})
+		helper.SendChannelMessage(s, channels.GetRecruitmentChannel(), message, e)
 
 		if roles.HasRole(m.Roles, roles.GetNewcomerRoleID()) {
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "role_removed",
-					"member_id": m.User.ID,
-					"role":      "newcomer",
-				})
-
-				err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetNewcomerRoleID())
-				return err
-			})
+			helper.RemoveRole(s, m.GuildID, m.User.ID, roles.GetNewcomerRoleID(), e)
 		}
 
 		rtm := helper.NewRecruitmentThreadManager(s, e, m.User.ID)
@@ -156,20 +133,7 @@ func recruitAuthenticated(s *discordgo.Session, m *discordgo.GuildMemberUpdate, 
 			"member_id": m.User.ID,
 		})
 
-		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(logger.LogData{
-				"trace_id":  e.TraceID,
-				"action":    "recruitment_message_sent",
-				"member_id": m.User.ID,
-				"channel":   channels.GetRecruitmentHub(),
-			})
-
-			_, err := s.ChannelMessageSend(channels.GetRecruitmentHub(), fmt.Sprintf("%s has completed the authentication steps.", m.Member.DisplayName()))
-			if err != nil {
-				return err
-			}
-			return nil
-		})
+		helper.SendChannelMessage(s, channels.GetRecruitmentHub(), fmt.Sprintf("%s has completed the authentication steps.", m.Member.DisplayName()), e)
 
 		helper.SendDirectMessage(s, m.User.ID,
 			"The authentication steps for Astral Acquisitions Inc have been completed. Please reach out to a recruiter in the recruitment channel.", e)
@@ -210,46 +174,12 @@ func newMemberOnboarding(s *discordgo.Session, m *discordgo.GuildMemberUpdate, a
 		rolesToRemove := []string{
 			roles.GetNewcomerRoleID(), roles.GetRecruitRoleID(), roles.GetGuestRoleID(),
 		}
-
-		for _, roleID := range rolesToRemove {
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "role_removed",
-					"member_id": m.User.ID,
-					"role_id":   roleID,
-				})
-				err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roleID)
-				return err
-			})
-		}
-
-		for _, roleID := range roles.ContentNotificationRoles {
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "role_added",
-					"member_id": m.User.ID,
-					"role_id":   roleID,
-				})
-				err := s.GuildMemberRoleAdd(m.GuildID, m.User.ID, roleID)
-				return err
-			})
-		}
+		helper.RemoveRoles(s, m.GuildID, m.User.ID, rolesToRemove, e)
+		helper.AddRoles(s, m.GuildID, m.User.ID, roles.ContentNotificationRoles, e)
 
 		message := fmt.Sprintf(globals.MemberJoinWelcomeMessage, m.Member.DisplayName(), m.User.ID)
-
-		channelID := channels.GetGeneralChannel()
-		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(logger.LogData{
-				"trace_id":  e.TraceID,
-				"action":    "welcome_message_sent",
-				"member_id": m.User.ID,
-				"channel":   channelID,
-			})
-			_, err := s.ChannelMessageSend(channelID, message)
-			return err
-		})
+		helper.SendChannelMessage(s, channels.GetGeneralChannel(), message, e)
+		helper.SendDirectMessage(s, m.User.ID, message, e)
 
 		rtm := helper.NewRecruitmentThreadManager(s, e, m.User.ID)
 
@@ -310,17 +240,7 @@ func memberRecievesGuestRole(s *discordgo.Session, m *discordgo.GuildMemberUpdat
 			"process":   "member_recieves_guest_role",
 			"member_id": m.User.ID,
 		})
-		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(logger.LogData{
-				"trace_id":  e.TraceID,
-				"action":    "role_removed",
-				"member_id": m.User.ID,
-				"role":      "newcomer",
-			})
-
-			err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetNewcomerRoleID())
-			return err
-		})
+		helper.RemoveRole(s, m.GuildID, m.User.ID, roles.GetNewcomerRoleID(), e)
 		return true
 	}
 	return false

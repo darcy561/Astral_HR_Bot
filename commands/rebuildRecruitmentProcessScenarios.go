@@ -293,10 +293,8 @@ func RebuildRecruitmentProcessScenariosCommand(s *discordgo.Session, i *discordg
 
 // GetRebuildRecruitmentProcessScenariosCommandDefinition returns the rebuildrecruitmentprocessscenarios command definition
 func GetRebuildRecruitmentProcessScenariosCommandDefinition() *discordgo.ApplicationCommand {
-	adminPerm := int64(discordgo.PermissionAdministrator)
 	return &discordgo.ApplicationCommand{
-		Name:                     "rebuild-recruitment-scenarios",
-		Description:              "Rebuilds missing recruitment process monitoring scenarios from forum posts",
-		DefaultMemberPermissions: &adminPerm,
+		Name:        "rebuild-recruitment-scenarios",
+		Description: "Rebuilds missing recruitment process monitoring scenarios from forum posts",
 	}
 }

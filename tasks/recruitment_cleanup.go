@@ -7,7 +7,6 @@ import (
 	"astralHRBot/logger"
 	"astralHRBot/models"
 	"astralHRBot/roles"
-	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
 	"astralHRBot/workers/monitoring"
 	"context"
@@ -85,26 +84,7 @@ func ProcessRecruitmentCleanup(task models.Task) {
 				"user_id":  e.UserID,
 			})
 
-			discordAPIWorker.NewRequest(e, func() error {
-				err := bot.Discord.GuildMemberRoleRemove(bot.Discord.State.Guilds[0].ID, e.UserID, roles.GetRecruitRoleID())
-				if err != nil {
-					logger.Error(logger.LogData{
-						"trace_id": e.TraceID,
-						"action":   "process_recruitment_cleanup",
-						"message":  "Failed to remove recruit role",
-						"error":    err.Error(),
-					})
-					return err
-				} else {
-					logger.Debug(logger.LogData{
-						"trace_id": e.TraceID,
-						"action":   "process_recruitment_cleanup",
-						"message":  "Successfully removed recruit role",
-						"user_id":  e.UserID,
-					})
-				}
-				return nil
-			})
+			helper.RemoveRole(bot.Discord, bot.Discord.State.Guilds[0].ID, e.UserID, roles.GetRecruitRoleID(), e)
 
 			rtm := helper.NewRecruitmentThreadManager(bot.Discord, e, e.UserID)
 			rtm.SendMessageAndClose("❌ No activity in recruitment process scenario within the last 7 days. Flagged for removal.", "Newbie role removed")

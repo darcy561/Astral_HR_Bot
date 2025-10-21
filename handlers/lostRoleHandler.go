@@ -7,7 +7,6 @@ import (
 	"astralHRBot/models"
 	"astralHRBot/roles"
 	"astralHRBot/users"
-	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
 	"astralHRBot/workers/monitoring"
 	"fmt"
@@ -29,50 +28,15 @@ func HandleRoleLost(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []st
 
 func memberLeavesCorporation(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string, e eventWorker.Event) bool {
 	if roles.HasRole(r, roles.GetMemberRoleID()) {
-		for _, roleID := range roles.ContentNotificationRoles {
-			discordAPIWorker.NewRequest(e, func() error {
-				logger.Debug(logger.LogData{
-					"trace_id":  e.TraceID,
-					"action":    "role_removed",
-					"member_id": m.User.ID,
-					"role_id":   roleID,
-				})
-
-				err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roleID)
-				return err
-			})
-		}
+		helper.RemoveRoles(s, m.GuildID, m.User.ID, roles.ContentNotificationRoles, e)
 
 		monitoring.RemoveAllScenarios(m.User.ID)
 
-		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(logger.LogData{
-				"trace_id":  e.TraceID,
-				"action":    "role_removed",
-				"member_id": m.User.ID,
-				"role":      "absentee",
-			})
-			err := s.GuildMemberRoleRemove(m.GuildID, m.User.ID, roles.GetAbsenteeRoleID())
-			return err
-		})
+		helper.RemoveRole(s, m.GuildID, m.User.ID, roles.GetAbsenteeRoleID(), e)
+		helper.AddRole(s, m.GuildID, m.User.ID, roles.GetGuestRoleID(), e)
 
-		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(logger.LogData{
-				"trace_id":  e.TraceID,
-				"action":    "role_added",
-				"member_id": m.User.ID,
-				"role":      "guest",
-			})
-			err := s.GuildMemberRoleAdd(m.GuildID, m.User.ID, roles.GetGuestRoleID())
-			return err
-		})
-
-		discordAPIWorker.NewRequest(e, func() error {
-
-			_, err := s.ChannelMessageSend(channels.GetHRChannel(), fmt.Sprintf("%s, has left the corporation and their discord access has been removed.", m.User.GlobalName))
-			return err
-
-		})
+		message := fmt.Sprintf("%s, has left the corporation and their discord access has been removed.", m.User.GlobalName)
+		helper.SendChannelMessage(s, channels.GetHRChannel(), message, e)
 
 		logger.Debug(logger.LogData{
 			"trace_id":  e.TraceID,
@@ -89,16 +53,7 @@ func memberLeavesCorporation(s *discordgo.Session, m *discordgo.GuildMemberUpdat
 
 func memberLosesBlueRole(s *discordgo.Session, m *discordgo.GuildMemberUpdate, r []string, e eventWorker.Event) bool {
 	if roles.HasRole(r, roles.GetBlueRoleID()) {
-		discordAPIWorker.NewRequest(e, func() error {
-			logger.Debug(logger.LogData{
-				"trace_id":  e.TraceID,
-				"action":    "role_added",
-				"member_id": m.User.ID,
-				"role":      "guest",
-			})
-			err := s.GuildMemberRoleAdd(m.GuildID, m.User.ID, roles.GetGuestRoleID())
-			return err
-		})
+		helper.AddRole(s, m.GuildID, m.User.ID, roles.GetGuestRoleID(), e)
 
 		logger.Debug(logger.LogData{
 			"trace_id":  e.TraceID,

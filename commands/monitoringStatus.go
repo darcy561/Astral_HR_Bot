@@ -207,10 +207,8 @@ func formatDuration(d time.Duration) string {
 
 // GetMonitoringStatusCommandDefinition returns the monitoring-status command definition
 func GetMonitoringStatusCommandDefinition() *discordgo.ApplicationCommand {
-	adminPerm := int64(discordgo.PermissionAdministrator)
 	return &discordgo.ApplicationCommand{
-		Name:                     "monitoring-status",
-		Description:              "Shows all users with their monitoring scenarios, expiration times, and matching events",
-		DefaultMemberPermissions: &adminPerm,
+		Name:        "monitoring-status",
+		Description: "Shows all users with their monitoring scenarios, expiration times, and matching events",
 	}
 }

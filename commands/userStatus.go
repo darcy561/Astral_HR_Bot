@@ -165,11 +165,9 @@ func UserStatusCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 // GetUserStatusCommandDefinition returns the userstatus command definition
 func GetUserStatusCommandDefinition() *discordgo.ApplicationCommand {
-	adminPerm := int64(discordgo.PermissionAdministrator)
 	return &discordgo.ApplicationCommand{
-		Name:                     "userstatus",
-		Description:              "Get current monitoring and task status for a user",
-		DefaultMemberPermissions: &adminPerm,
+		Name:        "userstatus",
+		Description: "Get current monitoring and task status for a user",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionUser,

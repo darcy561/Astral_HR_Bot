@@ -267,11 +267,9 @@ func RebuildUserEventsCommand(s *discordgo.Session, i *discordgo.InteractionCrea
 
 // GetRebuildUserEventsCommandDefinition returns the rebuilduserevents command definition
 func GetRebuildUserEventsCommandDefinition() *discordgo.ApplicationCommand {
-	adminPerm := int64(discordgo.PermissionAdministrator)
 	return &discordgo.ApplicationCommand{
-		Name:                     "rebuilduserevents",
-		Description:              "Rebuild events/tasks for a monitored user",
-		DefaultMemberPermissions: &adminPerm,
+		Name:        "rebuilduserevents",
+		Description: "Rebuild events/tasks for a monitored user",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionUser,

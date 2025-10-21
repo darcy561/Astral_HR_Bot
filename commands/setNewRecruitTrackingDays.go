@@ -44,11 +44,9 @@ func SetNewRecruitTrackingDaysCommand(s *discordgo.Session, i *discordgo.Interac
 
 // GetSetNewRecruitTrackingDaysCommandDefinition returns the command definition
 func GetSetNewRecruitTrackingDaysCommandDefinition() *discordgo.ApplicationCommand {
-	adminPerm := int64(discordgo.PermissionAdministrator)
 	return &discordgo.ApplicationCommand{
-		Name:                     "set-new-member-tracking-days",
-		Description:              "Set the number of days to track new member activity (Administrator only)",
-		DefaultMemberPermissions: &adminPerm,
+		Name:        "set-new-member-tracking-days",
+		Description: "Set the number of days to track new member activity",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionInteger,

@@ -7,7 +7,6 @@ import (
 	"astralHRBot/helper"
 	"astralHRBot/logger"
 	"astralHRBot/models"
-	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
 	"astralHRBot/workers/monitoring"
 	"context"
@@ -146,19 +145,7 @@ func ProcessUserCheckin(task models.Task) {
 		}
 
 		// Send to recruitment hub
-		discordAPIWorker.NewRequest(e, func() error {
-			_, err := bot.Discord.ChannelMessageSendEmbed(channels.GetRecruitmentHub(), &embededMessage)
-			if err != nil {
-				logger.Error(logger.LogData{
-					"trace_id": e.TraceID,
-					"action":   "process_user_checkin",
-					"message":  "Failed to send message to recruitment hub",
-					"error":    err.Error(),
-				})
-				return err
-			}
-			return nil
-		})
+		helper.SendChannelEmbed(bot.Discord, channels.GetRecruitmentHub(), &embededMessage, e)
 
 		// Find and handle the recruitment thread
 		rtm := helper.NewRecruitmentThreadManager(bot.Discord, e, e.UserID)

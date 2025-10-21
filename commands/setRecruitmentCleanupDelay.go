@@ -44,11 +44,9 @@ func SetRecruitmentCleanupDelayCommand(s *discordgo.Session, i *discordgo.Intera
 
 // GetSetRecruitmentCleanupDelayCommandDefinition returns the command definition
 func GetSetRecruitmentCleanupDelayCommandDefinition() *discordgo.ApplicationCommand {
-	adminPerm := int64(discordgo.PermissionAdministrator)
 	return &discordgo.ApplicationCommand{
-		Name:                     "set-recruitment-cleanup-delay",
-		Description:              "Set the recruitment cleanup delay in days (Administrator only)",
-		DefaultMemberPermissions: &adminPerm,
+		Name:        "set-recruitment-cleanup-delay",
+		Description: "Set the recruitment cleanup delay in days",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionInteger,

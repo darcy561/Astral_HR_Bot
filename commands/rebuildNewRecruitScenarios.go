@@ -404,10 +404,8 @@ func extractUserIDFromThreadTitle(threadName string) string {
 
 // GetRebuildNewRecruitScenariosCommandDefinition returns the rebuild-new-recruit-scenarios command definition
 func GetRebuildNewRecruitScenariosCommandDefinition() *discordgo.ApplicationCommand {
-	adminPerm := int64(discordgo.PermissionAdministrator)
 	return &discordgo.ApplicationCommand{
-		Name:                     "rebuild-new-recruit-scenarios",
-		Description:              "Rebuilds missing new recruit monitoring scenarios from archived forum posts",
-		DefaultMemberPermissions: &adminPerm,
+		Name:        "rebuild-new-recruit-scenarios",
+		Description: "Rebuilds missing new recruit monitoring scenarios from archived forum posts",
 	}
 }

@@ -30,10 +30,8 @@ func ToggleDebugCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 // GetToggleDebugCommandDefinition returns the toggledebug command definition
 func GetToggleDebugCommandDefinition() *discordgo.ApplicationCommand {
-	adminPerm := int64(discordgo.PermissionAdministrator)
 	return &discordgo.ApplicationCommand{
-		Name:                     "toggle-debug-mode",
-		Description:              "Toggle debug mode for the bot",
-		DefaultMemberPermissions: &adminPerm,
+		Name:        "toggle-debug-mode",
+		Description: "Toggle debug mode for the bot",
 	}
 }

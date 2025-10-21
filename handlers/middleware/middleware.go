@@ -5,7 +5,6 @@ import (
 	"astralHRBot/helper"
 	"astralHRBot/logger"
 	"astralHRBot/users"
-	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
 	"astralHRBot/workers/monitoring"
 	"fmt"
@@ -18,14 +17,9 @@ func IgnoreBotMessages(discord *discordgo.Session, message *discordgo.MessageCre
 }
 
 func SendMessageOnMemberJoin(s *discordgo.Session, m *discordgo.GuildMemberAdd, e eventWorker.Event) bool {
-	channelID := channels.GetLandingChannel()
 	userName := helper.GetDisplayName(m.User)
 	message := fmt.Sprintf("%s Joined The Server.", userName)
-
-	discordAPIWorker.NewRequest(e, func() error {
-		_, err := s.ChannelMessageSend(channelID, message)
-		return err
-	})
+	helper.SendChannelMessage(s, channels.GetLandingChannel(), message, e)
 
 	logger.Debug(logger.LogData{
 		"trace_id":   e.TraceID,
@@ -39,14 +33,9 @@ func SendMessageOnMemberJoin(s *discordgo.Session, m *discordgo.GuildMemberAdd, 
 }
 
 func SendMessageOnMemberLeave(s *discordgo.Session, m *discordgo.GuildMemberRemove, e eventWorker.Event) bool {
-	channelID := channels.GetLeaversChannel()
 	userName := helper.GetDisplayName(m.User)
 	message := fmt.Sprintf("%s Left The Server.", userName)
-
-	discordAPIWorker.NewRequest(e, func() error {
-		_, err := s.ChannelMessageSend(channelID, message)
-		return err
-	})
+	helper.SendChannelMessage(s, channels.GetLeaversChannel(), message, e)
 
 	logger.Debug(logger.LogData{
 		"trace_id":   e.TraceID,

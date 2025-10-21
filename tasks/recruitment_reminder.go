@@ -4,10 +4,10 @@ import (
 	"astralHRBot/bot"
 	"astralHRBot/channels"
 	"astralHRBot/db"
+	"astralHRBot/helper"
 	"astralHRBot/logger"
 	"astralHRBot/models"
 	"astralHRBot/roles"
-	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
 	"context"
 	"fmt"
@@ -81,43 +81,23 @@ func ProcessRecruitmentReminder(task models.Task) {
 	}
 
 	// Handle reminder logic based on authentication status
-	if isAuthenticated {
-		discordAPIWorker.NewRequest(eventWorker.Event{
-			TraceID: task.TaskID,
-			UserID:  params.UserID,
-		}, func() error {
-			_, err := bot.Discord.ChannelMessageSend(channels.GetRecruitmentChannel(), fmt.Sprintf(
-				"<@%s> It looks like you have completed the authentication steps already. If you are still interested in joining the corporation, please reach out to a recruiter.",
-				params.UserID,
-			))
-			if err != nil {
-				logger.Error(logger.LogData{
-					"action":  "process_recruitment_reminder",
-					"message": "failed to send message to recruitment channel",
-					"error":   err.Error(),
-				})
-			}
-			return nil
-		})
-	} else {
-		discordAPIWorker.NewRequest(eventWorker.Event{
-			TraceID: task.TaskID,
-			UserID:  params.UserID,
-		}, func() error {
+	event := eventWorker.Event{
+		TraceID: task.TaskID,
+		UserID:  params.UserID,
+	}
 
-			_, err := bot.Discord.ChannelMessageSend(channels.GetRecruitmentChannel(), fmt.Sprintf(
-				"<@%s> Are you still interested in joining the corporation? If so, please complete the authentication steps provided previously and reach out to a recruiter.",
-				params.UserID,
-			))
-			if err != nil {
-				logger.Error(logger.LogData{
-					"action":  "process_recruitment_reminder",
-					"message": "failed to send message to recruitment channel",
-					"error":   err.Error(),
-				})
-			}
-			return nil
-		})
+	if isAuthenticated {
+		message := fmt.Sprintf(
+			"<@%s> It looks like you have completed the authentication steps. If you are still interested in joining the corporation, please reach out to a recruiter in the recruitment channel.",
+			params.UserID,
+		)
+		helper.SendChannelMessage(bot.Discord, channels.GetRecruitmentChannel(), message, event)
+	} else {
+		message := fmt.Sprintf(
+			"<@%s> Are you still interested in joining the corporation? If so, please complete the authentication steps provided previously and reach out to a recruiter.",
+			params.UserID,
+		)
+		helper.SendChannelMessage(bot.Discord, channels.GetRecruitmentChannel(), message, event)
 	}
 
 	// Mark task as done by removing it (idempotent with current queue model)

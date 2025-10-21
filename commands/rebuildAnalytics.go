@@ -105,11 +105,9 @@ func RebuildAnalyticsCommand(s *discordgo.Session, i *discordgo.InteractionCreat
 
 // GetRebuildAnalyticsCommandDefinition returns the rebuildanalytics command definition
 func GetRebuildAnalyticsCommandDefinition() *discordgo.ApplicationCommand {
-	adminPerm := int64(discordgo.PermissionAdministrator)
 	return &discordgo.ApplicationCommand{
-		Name:                     "rebuild-analytics",
-		Description:              "Rebuilds analytics data for a specific user",
-		DefaultMemberPermissions: &adminPerm,
+		Name:        "rebuild-analytics",
+		Description: "Rebuilds analytics data for a specific user",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionUser,
