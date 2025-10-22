@@ -9,16 +9,19 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 var RedisDB *redis.Client
+var redisHost string
 
 func InitRedis() {
 
-	redisHost, exists := os.LookupEnv("REDIS_HOST")
+	var exists bool
+	redisHost, exists = os.LookupEnv("REDIS_HOST")
 
 	if !exists {
 		logger.Error(logger.LogData{
@@ -43,10 +46,34 @@ func InitRedis() {
 		os.Exit(1)
 	}
 
+	// Validate that we're connected to a master Redis instance
+	info, err := RedisDB.Info(context.Background(), "replication").Result()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "redis_startup",
+			"message": "Failed to get Redis replication info",
+			"error":   err.Error(),
+		})
+		os.Exit(1)
+	}
+
+	// Check if this is a replica (read-only)
+	if strings.Contains(info, "role:slave") || strings.Contains(info, "role:replica") {
+		logger.Error(logger.LogData{
+			"action":  "redis_startup",
+			"message": "Connected to Redis replica (read-only). Application requires write access to master Redis instance.",
+			"error":   "READONLY replica detected",
+		})
+		os.Exit(1)
+	}
+
 	logger.Info(logger.LogData{
 		"action":  "redis_startup",
-		"message": "Connection to Redis established.",
+		"message": "Connection to Redis master established.",
 	})
+
+	// Start connection monitoring
+	go monitorRedisConnection()
 }
 
 func GetRedisClient() *redis.Client {
@@ -104,7 +131,9 @@ func SaveUserToRedis(ctx context.Context, user *models.User) error {
 		return fmt.Errorf("error converting user struct: %w", err)
 	}
 
-	err = RedisDB.HSet(ctx, key, userMap).Err()
+	err = executeWithRetry(func() error {
+		return RedisDB.HSet(ctx, key, userMap).Err()
+	}, "save_user_to_redis")
 	if err != nil {
 		return fmt.Errorf("error saving user struct to redis: %w", err)
 	}
@@ -292,7 +321,10 @@ func SaveTaskToRedis(ctx context.Context, task models.Task) error {
 		return err
 	}
 
-	err = RedisDB.Set(ctx, key, taskJSON, 0).Err()
+	// Use retry logic for Redis operations
+	err = executeWithRetry(func() error {
+		return RedisDB.Set(ctx, key, taskJSON, 0).Err()
+	}, "save_task_to_redis")
 	if err != nil {
 		logger.Error(logger.LogData{
 			"action":  "save_task_to_redis",
@@ -302,10 +334,12 @@ func SaveTaskToRedis(ctx context.Context, task models.Task) error {
 		return err
 	}
 
-	err = RedisDB.ZAdd(ctx, "taskQueue", redis.Z{
-		Score:  float64(task.ScheduledTime),
-		Member: task.TaskID,
-	}).Err()
+	err = executeWithRetry(func() error {
+		return RedisDB.ZAdd(ctx, "taskQueue", redis.Z{
+			Score:  float64(task.ScheduledTime),
+			Member: task.TaskID,
+		}).Err()
+	}, "add_task_to_queue")
 	if err != nil {
 		logger.Error(logger.LogData{
 			"action":  "save_task_to_redis",
@@ -872,4 +906,184 @@ func GetTasksForUser(ctx context.Context, userID string) ([]models.Task, error) 
 	})
 
 	return userTasks, nil
+}
+
+// monitorRedisConnection continuously monitors Redis connection health
+func monitorRedisConnection() {
+	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if !isRedisHealthy() {
+			logger.Warn(logger.LogData{
+				"action":  "redis_health_check",
+				"message": "Redis connection unhealthy, attempting recovery...",
+			})
+			reconnectRedis()
+		}
+	}
+}
+
+// isRedisHealthy checks if Redis connection is healthy and writable
+func isRedisHealthy() bool {
+	if RedisDB == nil {
+		return false
+	}
+
+	// Test basic connectivity
+	_, err := RedisDB.Ping(context.Background()).Result()
+	if err != nil {
+		logger.Warn(logger.LogData{
+			"action":  "redis_health_check",
+			"message": "Redis ping failed",
+			"error":   err.Error(),
+		})
+		return false
+	}
+
+	// Test write capability
+	err = RedisDB.Set(context.Background(), "health_check", "ok", 1*time.Second).Err()
+	if err != nil {
+		logger.Warn(logger.LogData{
+			"action":  "redis_health_check",
+			"message": "Redis write test failed",
+			"error":   err.Error(),
+		})
+		return false
+	}
+
+	// Check if we're connected to a master (not replica)
+	info, err := RedisDB.Info(context.Background(), "replication").Result()
+	if err != nil {
+		logger.Warn(logger.LogData{
+			"action":  "redis_health_check",
+			"message": "Failed to get Redis replication info",
+			"error":   err.Error(),
+		})
+		return false
+	}
+
+	// Check if this is a replica (read-only)
+	if strings.Contains(info, "role:slave") || strings.Contains(info, "role:replica") {
+		logger.Warn(logger.LogData{
+			"action":  "redis_health_check",
+			"message": "Connected to Redis replica (read-only)",
+		})
+		return false
+	}
+
+	return true
+}
+
+// reconnectRedis attempts to reconnect to Redis
+func reconnectRedis() {
+	logger.Info(logger.LogData{
+		"action":  "redis_reconnect",
+		"message": "Attempting to reconnect to Redis...",
+	})
+
+	// Close existing connection
+	if RedisDB != nil {
+		RedisDB.Close()
+	}
+
+	// Create new connection with same configuration
+	RedisDB = redis.NewClient(&redis.Options{
+		Addr:         redisHost,
+		DB:           0,
+		PoolSize:     10,
+		MinIdleConns: 5,
+		MaxRetries:   3,
+		DialTimeout:  5 * time.Second,
+		ReadTimeout:  3 * time.Second,
+		WriteTimeout: 3 * time.Second,
+	})
+
+	// Test the new connection
+	_, err := RedisDB.Ping(context.Background()).Result()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "redis_reconnect",
+			"message": "Failed to reconnect to Redis",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// Validate it's a master
+	info, err := RedisDB.Info(context.Background(), "replication").Result()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "redis_reconnect",
+			"message": "Failed to get Redis replication info after reconnect",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	if strings.Contains(info, "role:slave") || strings.Contains(info, "role:replica") {
+		logger.Error(logger.LogData{
+			"action":  "redis_reconnect",
+			"message": "Reconnected to Redis replica (read-only). Retrying in 30 seconds...",
+		})
+		// Schedule another reconnection attempt
+		go func() {
+			time.Sleep(30 * time.Second)
+			reconnectRedis()
+		}()
+		return
+	}
+
+	logger.Info(logger.LogData{
+		"action":  "redis_reconnect",
+		"message": "Successfully reconnected to Redis master",
+	})
+}
+
+// executeWithRetry executes a Redis operation with retry logic
+func executeWithRetry(operation func() error, operationName string) error {
+	maxRetries := 3
+	baseDelay := 1 * time.Second
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err := operation()
+		if err == nil {
+			return nil
+		}
+
+		// Check if it's a READONLY error
+		if strings.Contains(err.Error(), "READONLY") {
+			logger.Warn(logger.LogData{
+				"action":      "redis_operation_retry",
+				"message":     "READONLY error detected, triggering reconnection",
+				"operation":   operationName,
+				"attempt":     attempt,
+				"max_retries": maxRetries,
+			})
+
+			// Trigger reconnection
+			reconnectRedis()
+
+			// Wait a bit before retrying
+			time.Sleep(time.Duration(attempt) * baseDelay)
+			continue
+		}
+
+		// For other errors, just retry with exponential backoff
+		if attempt < maxRetries {
+			delay := time.Duration(attempt) * baseDelay
+			logger.Warn(logger.LogData{
+				"action":      "redis_operation_retry",
+				"message":     "Redis operation failed, retrying",
+				"operation":   operationName,
+				"attempt":     attempt,
+				"max_retries": maxRetries,
+				"retry_delay": delay.String(),
+				"error":       err.Error(),
+			})
+			time.Sleep(delay)
+		}
+	}
+
+	return fmt.Errorf("redis operation failed after %d attempts", maxRetries)
 }

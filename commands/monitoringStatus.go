@@ -165,25 +165,29 @@ func MonitoringStatusCommand(s *discordgo.Session, i *discordgo.InteractionCreat
 		userDetails = append(userDetails, userDetail)
 	}
 
-	// Create final response
-	response := "📊 **All Monitored Users**\n\n"
-	response += fmt.Sprintf("**Total Users:** %d\n", len(trackedUsers))
-	response += fmt.Sprintf("**Active:** %d\n", activeUsers)
+	// Create summary response first
+	summaryResponse := "📊 **All Monitored Users**\n\n"
+	summaryResponse += fmt.Sprintf("**Total Users:** %d\n", len(trackedUsers))
+	summaryResponse += fmt.Sprintf("**Active:** %d\n", activeUsers)
 	if expiredUsers > 0 {
-		response += fmt.Sprintf("**Expired:** %d\n\n", expiredUsers)
+		summaryResponse += fmt.Sprintf("**Expired:** %d\n\n", expiredUsers)
 	} else {
-		response += "\n"
+		summaryResponse += "\n"
 	}
 
-	// Add detailed user information
+	// Send summary first
+	FollowUpMessage(s, i, summaryResponse, true)
+
+	// Send detailed user information in chunks if there are many users
 	if len(userDetails) > 0 {
-		response += "**👥 User Details:**\n"
+		// Use the FollowUpMessage function which has built-in chunking
+		// This will automatically handle character limits
+		userResponse := "**👥 User Details:**\n"
 		for _, detail := range userDetails {
-			response += detail + "\n"
+			userResponse += detail + "\n"
 		}
+		FollowUpMessage(s, i, userResponse, true)
 	}
-
-	FollowUpMessage(s, i, response, true)
 }
 
 // formatDuration formats a duration into a human-readable string
