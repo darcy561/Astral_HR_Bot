@@ -85,6 +85,22 @@ func (rtm *RecruitmentThreadManager) GetThread() (*discordgo.Channel, bool) {
 	return rtm.thread, rtm.found
 }
 
+// IsThreadOpen checks if the recruitment thread is currently open (not archived)
+func (rtm *RecruitmentThreadManager) IsThreadOpen() bool {
+	if !rtm.found {
+		return false
+	}
+
+	// Check if the thread has ThreadMetadata and if it's archived
+	if rtm.thread.ThreadMetadata != nil {
+		// If ArchiveTimestamp is set, the thread is archived
+		return rtm.thread.ThreadMetadata.ArchiveTimestamp.IsZero()
+	}
+
+	// If no ThreadMetadata, assume it's open
+	return true
+}
+
 // SendMessage sends a message to the recruitment thread
 func (rtm *RecruitmentThreadManager) SendMessage(message string) error {
 	if !rtm.found {

@@ -90,7 +90,20 @@ func memberLeavingSererHandlers(e eventWorker.Event) {
 
 	//close a recruitment thread if its open and assign the "Left Server" tag
 	rtm := helper.NewRecruitmentThreadManager(s, e, m.User.ID)
-	rtm.SendMessageAndClose(fmt.Sprintf("%s left the server.", m.User.GlobalName), "Left Server")
+
+	// Only update the thread if it exists and is currently open
+	if rtm.HasThread() && rtm.IsThreadOpen() {
+		rtm.SendMessageAndClose(fmt.Sprintf("%s left the server.", m.User.GlobalName), "Left Server")
+	} else if rtm.HasThread() {
+		thread, _ := rtm.GetThread()
+		logger.Debug(logger.LogData{
+			"trace_id":  e.TraceID,
+			"action":    "member_leaving",
+			"message":   "Recruitment thread is already closed - skipping update",
+			"user_id":   m.User.ID,
+			"thread_id": thread.ID,
+		})
+	}
 
 	//clear any monitoring or events for the user
 	monitoring.RemoveAllScenarios(m.User.ID)

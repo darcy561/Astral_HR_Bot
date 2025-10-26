@@ -145,10 +145,8 @@ func RebuildRecruitmentProcessScenariosCommand(s *discordgo.Session, i *discordg
 		// If natural expiration is in the past, schedule for 1 hour, otherwise use natural expiration
 		var expirationTime time.Time
 		if naturalExpiration.Before(now) {
-			// Natural expiration is in the past, schedule for 1 hour
 			expirationTime = now.Add(1 * time.Hour)
 		} else {
-			// Natural expiration is in the future, use that time
 			expirationTime = naturalExpiration
 		}
 

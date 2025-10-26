@@ -24,6 +24,7 @@ var commandDefinitions = []struct {
 	{GetRebuildNewRecruitScenariosCommandDefinition(), RebuildNewRecruitScenariosCommand},
 	{GetRebuildRecruitmentProcessScenariosCommandDefinition(), RebuildRecruitmentProcessScenariosCommand},
 	{GetRebuildAnalyticsCommandDefinition(), RebuildAnalyticsCommand},
+	{GetAssignPingRolesCommandDefinition(), AssignPingRolesCommand},
 	// Add more commands here as you create them
 	// {GetAnotherCommandDefinition(), AnotherCommand},
 }
