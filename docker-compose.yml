@@ -42,7 +42,6 @@ services:
     image: redis:latest
     container_name: redis_db
     restart: unless-stopped
-    command: ["redis-server", "--replicaof", "no"]
     networks:
       - default
     ports:
