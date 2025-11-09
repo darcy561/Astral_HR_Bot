@@ -39,9 +39,10 @@ services:
       - "8080:8080"
 
   redis:
-    image: redis:alpine
+    image: redis:latest
     container_name: redis_db
     restart: unless-stopped
+    command: ["redis-server", "--replicaof", "no"]
     networks:
       - default
     ports:
