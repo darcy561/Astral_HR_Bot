@@ -4,6 +4,7 @@ import (
 	"astralHRBot/bot/identity"
 	"astralHRBot/commands"
 	"astralHRBot/handlers"
+	"astralHRBot/helper"
 	"astralHRBot/logger"
 	discordAPIWorker "astralHRBot/workers/discordAPI"
 	"astralHRBot/workers/eventWorker"
@@ -19,6 +20,13 @@ var (
 	// ReadyChan signals when Discord connection is established
 	ReadyChan chan struct{}
 )
+
+// GetGuildID safely retrieves the guild ID from the global Discord session,
+// preferring environment variable over state
+// Returns the guild ID and an error if it cannot be determined
+func GetGuildID() (string, error) {
+	return helper.GetGuildIDFromSession(Discord)
+}
 
 func Setup() {
 	botToken, exists := os.LookupEnv("BOT_TOKEN")

@@ -86,7 +86,18 @@ func ProcessRecruitmentCleanup(task models.Task) {
 			})
 
 			discordAPIWorker.NewRequest(e, func() error {
-				err := bot.Discord.GuildMemberRoleRemove(bot.Discord.State.Guilds[0].ID, e.UserID, roles.GetRecruitRoleID())
+				guildID, err := bot.GetGuildID()
+				if err != nil {
+					logger.Error(logger.LogData{
+						"trace_id": e.TraceID,
+						"action":   "process_recruitment_cleanup",
+						"message":  "Failed to get guild ID",
+						"error":    err.Error(),
+					})
+					return err
+				}
+
+				err = bot.Discord.GuildMemberRoleRemove(guildID, e.UserID, roles.GetRecruitRoleID())
 				if err != nil {
 					logger.Error(logger.LogData{
 						"trace_id": e.TraceID,

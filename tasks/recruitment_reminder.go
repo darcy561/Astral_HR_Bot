@@ -36,7 +36,18 @@ func ProcessRecruitmentReminder(task models.Task) {
 		return
 	}
 
-	user, err := bot.Discord.GuildMember(bot.Discord.State.Guilds[0].ID, params.UserID)
+	guildID, err := bot.GetGuildID()
+	if err != nil {
+		logger.Error(logger.LogData{
+			"action":  "process_recruitment_reminder",
+			"message": "failed to get guild ID",
+			"error":   err.Error(),
+			"task_id": task.TaskID,
+		})
+		return
+	}
+
+	user, err := bot.Discord.GuildMember(guildID, params.UserID)
 	if err != nil {
 		logger.Error(logger.LogData{
 			"action":  "process_recruitment_reminder",
@@ -44,6 +55,7 @@ func ProcessRecruitmentReminder(task models.Task) {
 			"error":   err.Error(),
 			"user_id": params.UserID,
 		})
+		return
 	}
 
 	// Get message count from analytics

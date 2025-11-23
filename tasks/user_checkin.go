@@ -35,8 +35,20 @@ func ProcessUserCheckin(task models.Task) {
 	eventWorker.Submit(parms.UserID, func(e eventWorker.Event) {
 		ctx := context.Background()
 
+		// Get guild ID
+		guildID, err := bot.GetGuildID()
+		if err != nil {
+			logger.Error(logger.LogData{
+				"trace_id": e.TraceID,
+				"action":   "process_user_checkin",
+				"message":  "Failed to get guild ID",
+				"error":    err.Error(),
+			})
+			return
+		}
+
 		// Get user info from Discord
-		member, err := bot.Discord.GuildMember(bot.Discord.State.Guilds[0].ID, e.UserID)
+		member, err := bot.Discord.GuildMember(guildID, e.UserID)
 		if err != nil {
 			logger.Error(logger.LogData{
 				"trace_id": e.TraceID,
