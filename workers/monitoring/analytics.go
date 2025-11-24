@@ -3,6 +3,7 @@ package monitoring
 import (
 	"astralHRBot/db"
 	"astralHRBot/globals"
+	"astralHRBot/helper"
 	"astralHRBot/logger"
 	"astralHRBot/models"
 	"context"
@@ -81,8 +82,15 @@ func rebuildAnalyticsForWindow(userID string, scenarios []models.MonitoringScena
 
 	var guildID string
 	if needMessages || needVoice || needInvites {
-		// Get guild from state (assumes single guild)
-		guild, err := s.State.Guild(s.State.Guilds[0].ID)
+		// Get guild ID using the helper function
+		var err error
+		guildID, err = helper.GetGuildIDFromSession(s)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get guild ID: %w", err)
+		}
+
+		// Get guild from state to access channels
+		guild, err := s.State.Guild(guildID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get guild: %w", err)
 		}

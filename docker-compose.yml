@@ -42,6 +42,7 @@ services:
     image: redis:alpine
     container_name: redis_db
     restart: unless-stopped
+    command: redis-server --replicaof no one
     networks:
       - default
     ports:

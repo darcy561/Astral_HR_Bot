@@ -84,7 +84,18 @@ func ProcessRecruitmentCleanup(task models.Task) {
 				"user_id":  e.UserID,
 			})
 
-			helper.RemoveRole(bot.Discord, bot.Discord.State.Guilds[0].ID, e.UserID, roles.GetRecruitRoleID(), e)
+			guildID, err := bot.GetGuildID()
+			if err != nil {
+				logger.Error(logger.LogData{
+					"trace_id": e.TraceID,
+					"action":   "process_recruitment_cleanup",
+					"message":  "Failed to get guild ID",
+					"error":    err.Error(),
+				})
+				return
+			}
+
+			helper.RemoveRole(bot.Discord, guildID, e.UserID, roles.GetRecruitRoleID(), e)
 
 			rtm := helper.NewRecruitmentThreadManager(bot.Discord, e, e.UserID)
 			rtm.SendMessageAndClose("❌ No activity in recruitment process scenario within the last 7 days. Flagged for removal.", "Newbie role removed")
